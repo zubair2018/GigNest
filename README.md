@@ -2,6 +2,12 @@
 
 > **Hyperlocal job & skill exchange platform** — Find gigs, hire talent, connect instantly with people in your city.
 
+![GigsNest](https://img.shields.io/badge/GigsNest-Live-brightgreen?style=for-the-badge)
+![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react)
+![Firebase](https://img.shields.io/badge/Firebase-Firestore-FFCA28?style=for-the-badge&logo=firebase)
+![Tailwind](https://img.shields.io/badge/Tailwind-CSS-38B2AC?style=for-the-badge&logo=tailwind-css)
+![Vercel](https://img.shields.io/badge/Deployed-Vercel-black?style=for-the-badge&logo=vercel)
+
 ---
 
 ## 🔥 What is GigsNest?
@@ -45,6 +51,40 @@ Think of it as **Mini Fiverr + OLX + WhatsApp groups** — combined into one cle
 
 ---
 
+## 📁 Project Structure
+
+```
+gigs-nest/
+├── src/
+│   ├── firebase/
+│   │   ├── config.js         # Firebase init & exports
+│   │   └── db.js             # All Firestore CRUD operations
+│   ├── context/
+│   │   └── AuthContext.jsx   # Global auth state (Google Sign-In)
+│   ├── hooks/
+│   │   └── useJobs.js        # Custom hook for fetching jobs
+│   ├── components/
+│   │   ├── Navbar.jsx        # Top navigation bar
+│   │   └── JobCard.jsx       # Job listing card component
+│   ├── pages/
+│   │   ├── Home.jsx          # Main feed — search, filter, browse
+│   │   ├── PostJob.jsx       # Create a new job listing
+│   │   ├── JobDetail.jsx     # Single job view + apply/contact
+│   │   ├── MyJobs.jsx        # User's own posts dashboard
+│   │   └── SavedJobs.jsx     # Bookmarked jobs
+│   ├── App.jsx               # Route definitions
+│   ├── main.jsx              # React entry point
+│   └── index.css             # Tailwind + global styles
+├── firestore.rules           # Firestore security rules
+├── index.html                # HTML entry point
+├── tailwind.config.js
+├── vite.config.js
+└── package.json
+```
+
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
 - Node.js 18+
@@ -71,6 +111,19 @@ npm install
 4. Enable **Authentication → Google**
 5. Go to Project Settings → Web App → copy your config
 
+### 4. Add your Firebase config
+
+Open `src/firebase/config.js` and paste your config:
+
+```js
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+}
 ```
 
 ### 5. Add Firestore security rules
@@ -85,6 +138,64 @@ npm run dev
 
 Open [http://localhost:5173](http://localhost:5173) 🎉
 
+---
+
+## 🌍 Deployment
+
+### Deploy to Vercel
+
+```bash
+# Make sure the build works first
+npm run build
+
+# Push to GitHub, then import on Vercel
+```
+
+1. Push your code to GitHub
+2. Go to [vercel.com](https://vercel.com) → Import your repo
+3. Vercel auto-detects Vite → click **Deploy**
+4. Add your Vercel domain to Firebase → Authentication → Authorized domains
+
+---
+
+## 🔒 Firestore Security Rules
+
+```
+- Anyone can read job listings (public feed)
+- Only signed-in users can create jobs
+- Only the job owner can update or delete their post
+- Any signed-in user can bookmark (update savedBy field only)
+```
+
+---
+
+## 🔜 Roadmap
+
+- [ ] Edit job post
+- [ ] Image/thumbnail upload (Firebase Storage)
+- [ ] Location picker with map (Google Maps API)
+- [ ] Nearby jobs filter (geolocation)
+- [ ] Job expiry (auto-delete after 30 days)
+- [ ] Push notifications (FCM)
+- [ ] Dark mode
+- [ ] Rating & reviews system
+- [ ] In-app chat
+
+---
+
+## 👨‍💻 Author
+
+**Your Name**
+- GitHub: [@yourusername](https://github.com/yourusername)
+- LinkedIn: [yourprofile](https://linkedin.com/in/yourprofile)
+
+---
+
+## 📄 License
+
+MIT License — feel free to use this project for learning or your portfolio.
+
+---
 
 ## 💼 Resume Line
 

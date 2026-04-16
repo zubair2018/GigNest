@@ -10,38 +10,27 @@ export default function SavedJobs() {
   const [jobs, setJobs] = useState([])
   const [loading, setLoading] = useState(true)
 
-  const load = () => {
-    if (!user) return
-    getSavedJobs(user.uid).then(j => {
-      setJobs(j)
-      setLoading(false)
-    })
-  }
-
+  const load = () => { if (!user) return; getSavedJobs(user.uid).then(j => { setJobs(j); setLoading(false) }) }
   useEffect(() => { load() }, [user])
 
   if (!user) { navigate('/'); return null }
 
   return (
-    <div className="min-h-screen bg-[#f8f7f4] py-10 px-4">
-      <div className="max-w-5xl mx-auto">
-        <h1 className="font-syne font-extrabold text-2xl mb-1">Saved Jobs</h1>
-        <p className="text-sm text-gray-400 mb-6">{jobs.length} saved</p>
-
-        {loading ? (
-          <p className="text-gray-400 text-sm">Loading...</p>
-        ) : jobs.length === 0 ? (
-          <div className="text-center py-16 text-gray-400">
-            <p className="text-4xl mb-3">🔖</p>
-            <p className="font-syne font-bold text-lg text-gray-600 mb-1">No saved jobs yet</p>
-            <p className="text-sm mb-4">Bookmark jobs you like from the home page</p>
+    <div className="min-h-screen py-10 px-4" style={{ background: 'var(--cream)' }}>
+      <div className="max-w-6xl mx-auto">
+        <h1 className="font-black text-3xl tracking-tight mb-1" style={{ fontFamily: '"Playfair Display", serif', color: 'var(--forest)' }}>Saved Jobs</h1>
+        <p className="text-sm mb-7" style={{ color: 'var(--muted)' }}>{jobs.length} saved</p>
+        {loading ? <p style={{ color: 'var(--muted)' }} className="text-sm">Loading...</p>
+        : jobs.length === 0 ? (
+          <div className="text-center py-20" style={{ color: 'var(--muted)' }}>
+            <p className="text-5xl mb-4">🔖</p>
+            <p className="font-bold text-xl mb-2" style={{ fontFamily: '"Playfair Display", serif', color: 'var(--forest)' }}>Nothing saved yet</p>
+            <p className="text-sm mb-5">Bookmark jobs you like from the home feed</p>
             <button onClick={() => navigate('/')} className="btn-primary">Browse Jobs →</button>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {jobs.map(job => (
-              <JobCard key={job.id} job={job} onSaveToggle={load} />
-            ))}
+            {jobs.map(job => <JobCard key={job.id} job={job} onSaveToggle={load} />)}
           </div>
         )}
       </div>

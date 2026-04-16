@@ -4,13 +4,13 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        syne: ['Syne', 'sans-serif'],
-        dm: ['DM Sans', 'sans-serif'],
+        playfair: ['"Playfair Display"', 'serif'],
+        dm: ['"DM Sans"', 'sans-serif'],
       },
       colors: {
-        brand: '#e63946',
-        'brand-dark': '#c0303b',
-        accent: '#06d6a0',
+        cream: '#f6e9d0',
+        forest: '#043222',
+        gold: '#c9a84c',
       },
     },
   },
