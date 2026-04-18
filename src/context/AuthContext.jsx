@@ -9,14 +9,15 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, u => {
-      setUser(u)
-      setLoading(false)
-    })
+    const unsub = onAuthStateChanged(auth, u => { setUser(u); setLoading(false) })
     return unsub
   }, [])
 
-  const signInWithGoogle = () => signInWithPopup(auth, googleProvider)
+  const signInWithGoogle = async () => {
+    try { await signInWithPopup(auth, googleProvider) }
+    catch (e) { if (e.code !== 'auth/cancelled-popup-request') console.error(e) }
+  }
+
   const logout = () => signOut(auth)
 
   return (

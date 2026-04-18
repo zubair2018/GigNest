@@ -2,26 +2,24 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /jobs/{jobId} {
-
-      // Anyone can read job listings
       allow read: if true;
 
-      // Only signed-in users can create a job
       allow create: if request.auth != null
         && request.resource.data.postedBy.uid == request.auth.uid
         && request.resource.data.title is string
-        && request.resource.data.title.size() > 0
-        && request.resource.data.payMin is number
-        && request.resource.data.payMax is number
-        && request.resource.data.payMin <= request.resource.data.payMax;
+        && request.resource.data.title.size() > 0;
 
-      // Owner can update/delete their own job
-      allow update, delete: if request.auth != null
+      allow update: if request.auth != null
         && resource.data.postedBy.uid == request.auth.uid;
 
-      // Any signed-in user can update savedBy field only (for bookmarks)
       allow update: if request.auth != null
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['savedBy']);
+
+      allow update: if
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views']);
+
+      allow delete: if request.auth != null
+        && resource.data.postedBy.uid == request.auth.uid;
     }
   }
 }

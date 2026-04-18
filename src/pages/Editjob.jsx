@@ -1,33 +1,41 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { createJob } from '../firebase/db'
+import { getJob, updateJob } from '../firebase/db'
 
 const CATEGORIES = ['Tech', 'Design', 'Local', 'Content', 'Education']
 const PAY_TYPES = ['/project', '/month', '/day', '/hour', '/job']
 
-export default function PostJob() {
-  const { user, signInWithGoogle } = useAuth()
+export default function EditJob() {
+  const { id } = useParams()
+  const { user } = useAuth()
   const navigate = useNavigate()
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({
     title: '', category: 'Tech', location: '', description: '',
     payMin: '', payMax: '', payType: '/project', phone: '', tags: ''
   })
 
-  if (!user) return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'var(--cream)' }}>
-      <div className="rounded-2xl p-8 max-w-sm w-full text-center shadow-sm" style={{ background: '#fff', border: '1px solid rgba(4,50,34,0.1)' }}>
-        <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: 'rgba(4,50,34,0.07)' }}>
-          🔒
-        </div>
-        <h2 className="font-black text-xl mb-2" style={{ fontFamily: '"Playfair Display",serif', color: 'var(--forest)' }}>Sign in to post</h2>
-        <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>Create an account to post jobs and reach local talent.</p>
-        <button onClick={signInWithGoogle} className="btn-primary w-full py-3">Sign in with Google →</button>
-      </div>
-    </div>
-  )
+  useEffect(() => {
+    getJob(id).then(job => {
+      if (!job) { navigate('/'); return }
+      if (job.postedBy?.uid !== user?.uid) { navigate('/'); return }
+      setForm({
+        title: job.title || '',
+        category: job.category || 'Tech',
+        location: job.location || '',
+        description: job.description || '',
+        payMin: job.payMin || '',
+        payMax: job.payMax || '',
+        payType: job.payType || '/project',
+        phone: job.phone || '',
+        tags: (job.tags || []).join(', '),
+      })
+      setLoading(false)
+    })
+  }, [id, user])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -40,10 +48,10 @@ export default function PostJob() {
     if (!form.phone.trim()) return setError('Phone/WhatsApp number is required.')
     if (!form.payMin || !form.payMax) return setError('Pay range is required.')
     if (Number(form.payMin) > Number(form.payMax)) return setError('Min pay cannot be more than max pay.')
-    setLoading(true)
+    setSaving(true)
     try {
       const tags = form.tags.split(',').map(t => t.trim()).filter(Boolean).slice(0, 5)
-      const id = await createJob({
+      await updateJob(id, {
         title: form.title.trim(),
         category: form.category,
         location: form.location.trim(),
@@ -53,15 +61,21 @@ export default function PostJob() {
         payType: form.payType,
         phone: form.phone.trim(),
         tags,
-      }, user)
+      })
       navigate(`/job/${id}`)
     } catch (err) {
       console.error(err)
-      setError('Failed to post job. Please try again.')
+      setError('Failed to update. Please try again.')
     } finally {
-      setLoading(false)
+      setSaving(false)
     }
   }
+
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--cream)' }}>
+      <div className="w-8 h-8 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--forest)', borderTopColor: 'transparent' }} />
+    </div>
+  )
 
   return (
     <div className="min-h-screen py-10 px-4" style={{ background: 'var(--cream)' }}>
@@ -70,15 +84,15 @@ export default function PostJob() {
           ← Back
         </button>
         <h1 className="font-black text-3xl mb-1 tracking-tight" style={{ fontFamily: '"Playfair Display",serif', color: 'var(--forest)' }}>
-          Post a Job
+          Edit Job
         </h1>
-        <p className="text-sm mb-7" style={{ color: 'var(--muted)' }}>Reach local talent in minutes — it's 100% free.</p>
+        <p className="text-sm mb-7" style={{ color: 'var(--muted)' }}>Update your job listing below.</p>
 
         <form onSubmit={handleSubmit} className="rounded-2xl p-6 space-y-4 shadow-sm" style={{ background: '#fff', border: '1px solid rgba(4,50,34,0.08)' }}>
 
           <div>
             <label className="label">Job Title *</label>
-            <input className="input" placeholder="e.g. Need a React Developer" value={form.title} onChange={e => set('title', e.target.value)} />
+            <input className="input" value={form.title} onChange={e => set('title', e.target.value)} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -90,23 +104,23 @@ export default function PostJob() {
             </div>
             <div>
               <label className="label">Location *</label>
-              <input className="input" placeholder="Srinagar, Remote..." value={form.location} onChange={e => set('location', e.target.value)} />
+              <input className="input" value={form.location} onChange={e => set('location', e.target.value)} />
             </div>
           </div>
 
           <div>
             <label className="label">Description *</label>
-            <textarea className="input min-h-[110px] resize-y" placeholder="Describe the work, requirements, timeline..." value={form.description} onChange={e => set('description', e.target.value)} />
+            <textarea className="input min-h-[110px] resize-y" value={form.description} onChange={e => set('description', e.target.value)} />
           </div>
 
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="label">Min Pay (₹) *</label>
-              <input className="input" type="number" placeholder="5000" value={form.payMin} onChange={e => set('payMin', e.target.value)} />
+              <input className="input" type="number" value={form.payMin} onChange={e => set('payMin', e.target.value)} />
             </div>
             <div>
               <label className="label">Max Pay (₹) *</label>
-              <input className="input" type="number" placeholder="15000" value={form.payMax} onChange={e => set('payMax', e.target.value)} />
+              <input className="input" type="number" value={form.payMax} onChange={e => set('payMax', e.target.value)} />
             </div>
             <div>
               <label className="label">Per</label>
@@ -117,13 +131,13 @@ export default function PostJob() {
           </div>
 
           <div>
-            <label className="label">Skills / Tags <span style={{ color: 'var(--muted)', textTransform: 'none', letterSpacing: 0 }}>(comma separated)</span></label>
+            <label className="label">Skills / Tags</label>
             <input className="input" placeholder="React, Tailwind, Remote" value={form.tags} onChange={e => set('tags', e.target.value)} />
           </div>
 
           <div>
             <label className="label">WhatsApp / Phone *</label>
-            <input className="input" placeholder="+91 94190 00000" value={form.phone} onChange={e => set('phone', e.target.value)} />
+            <input className="input" value={form.phone} onChange={e => set('phone', e.target.value)} />
           </div>
 
           {error && (
@@ -132,10 +146,15 @@ export default function PostJob() {
             </div>
           )}
 
-          <button type="submit" disabled={loading} className="w-full py-3.5 rounded-xl font-bold text-base transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ background: loading ? 'var(--muted)' : 'var(--forest)', color: 'var(--cream)', fontFamily: '"Playfair Display",serif' }}>
-            {loading ? 'Posting...' : 'Post Job →'}
-          </button>
+          <div className="flex gap-3">
+            <button type="button" onClick={() => navigate(-1)} className="btn-outline flex-1 py-3">
+              Cancel
+            </button>
+            <button type="submit" disabled={saving} className="flex-1 py-3 rounded-xl font-bold text-base transition-all disabled:opacity-50"
+              style={{ background: 'var(--forest)', color: 'var(--cream)', fontFamily: '"Playfair Display",serif' }}>
+              {saving ? 'Saving...' : 'Save Changes →'}
+            </button>
+          </div>
         </form>
       </div>
     </div>
