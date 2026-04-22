@@ -16,7 +16,7 @@ export default function Navbar() {
 
         <Link to="/" style={{ fontFamily: '"Playfair Display",serif', color: 'var(--cream)' }}
           className="text-xl font-black tracking-tight flex-shrink-0">
-          Gigs<span style={{ color: 'var(--gold)' }}>Nest</span>
+          Gig<span style={{ color: 'var(--gold)' }}>Nest</span>
         </Link>
 
         <div className="flex items-center gap-1.5">

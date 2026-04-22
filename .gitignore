@@ -1,2 +1,15 @@
+# Dependencies
 node_modules/
+
+# Build output
+dist/
+
+# Environment & secrets — NEVER commit these
+.env
+.env.local
+.env.production
 src/firebase/config.js
+
+# Editor
+.DS_Store
+.vscode/
