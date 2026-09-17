@@ -10,6 +10,7 @@ import MyJobs from './pages/MyJobs'
 import SavedJobs from './pages/SavedJobs'
 import Messages from './pages/Messages'
 import Chat from './pages/Chat'
+import Admin from './pages/Admin'
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
           <Route path="/saved" element={<SavedJobs />} />
           <Route path="/messages" element={<Messages />} />
           <Route path="/chat/:chatId" element={<Chat />} />
+          <Route path="/admin" element={<Admin />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

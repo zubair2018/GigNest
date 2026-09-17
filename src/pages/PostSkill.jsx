@@ -14,7 +14,7 @@ export default function PostSkill() {
   const [form, setForm] = useState({
     title: '', category: 'Tech', location: '',
     description: '', payMin: '', payMax: '',
-    payType: '/project', tags: ''
+    payType: '/project', tags: '', phone: ''
   })
 
   if (!user) return (
@@ -36,8 +36,10 @@ export default function PostSkill() {
     if (!form.title.trim()) return setError('Skill title is required.')
     if (!form.description.trim()) return setError('Description is required.')
     if (!form.location.trim()) return setError('Location is required.')
+    if (!form.phone.trim()) return setError('Phone/WhatsApp number is required.')
     if (!form.payMin || !form.payMax) return setError('Rate range is required.')
     if (Number(form.payMin) > Number(form.payMax)) return setError('Min rate cannot exceed max.')
+
     setLoading(true)
     try {
       const tags = form.tags.split(',').map(t => t.trim()).filter(Boolean).slice(0, 5)
@@ -46,12 +48,14 @@ export default function PostSkill() {
         location: form.location.trim(), description: form.description.trim(),
         payMin: Number(form.payMin), payMax: Number(form.payMax),
         payType: form.payType, tags, type: 'skill',
-      }, user)
+      }, user, form.phone.trim())
       navigate(`/job/${id}`)
     } catch (err) {
       console.error(err)
       setError('Something went wrong. Please try again.')
-    } finally { setLoading(false) }
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -102,6 +106,10 @@ export default function PostSkill() {
           <div>
             <label className="label">Your skills / tools <span className="normal-case tracking-normal" style={{ color: 'var(--muted)' }}>(comma separated)</span></label>
             <input className="input" placeholder="React, Node.js, Figma, Canva" value={form.tags} onChange={e => set('tags', e.target.value)} />
+          </div>
+          <div>
+            <label className="label">WhatsApp / Phone *</label>
+            <input className="input" placeholder="+91 99060xxxxx" value={form.phone} onChange={e => set('phone', e.target.value)} />
           </div>
           {error && <div className="text-sm px-4 py-3 rounded-xl" style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>⚠️ {error}</div>}
           <button type="submit" disabled={loading} className="w-full py-3.5 rounded-xl font-bold text-base transition-all disabled:opacity-50"

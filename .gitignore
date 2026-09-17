@@ -8,7 +8,6 @@ dist/
 .env
 .env.local
 .env.production
-src/firebase/config.js
 
 # Editor
 .DS_Store

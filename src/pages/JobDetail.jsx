@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getJob, toggleSaveJob, deleteJob, incrementViews, getOrCreateChat } from '../firebase/db'
+import { getJob, toggleSaveJob, deleteJob, incrementViews, getOrCreateChat, createPaymentRequest, activateFeaturedPost, updatePaymentStatus } from '../firebase/db'
 import { useAuth } from '../context/AuthContext'
 
 const BADGE = {
@@ -17,7 +17,8 @@ const PLANS = [
   { days: 30, price: 299, label: '30 Days', tag: 'Best Value' },
 ]
 
-const GIGSNEST_WA = '919419000000' // ← replace with your number
+// REPLACE THIS WITH YOUR REAL WHATSAPP NUMBER
+const GIGSNEST_WA = '9199060XXXXX'
 
 export default function JobDetail() {
   const { id } = useParams()
@@ -30,6 +31,7 @@ export default function JobDetail() {
   const [contacting, setContacting] = useState(false)
   const [showFeatureModal, setShowFeatureModal] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState(PLANS[1])
+  const [featureLoading, setFeatureLoading] = useState(false)
 
   useEffect(() => {
     getJob(id).then(j => {
@@ -88,6 +90,33 @@ export default function JobDetail() {
       console.error(err)
       setContacting(false)
     }
+  }
+
+  async function handleFeatureRequest() {
+    if (!user) {
+      signInWithGoogle()
+      return
+    }
+    setFeatureLoading(true)
+    try {
+      await createPaymentRequest({
+        jobId: job.id,
+        jobTitle: job.title,
+        planDays: selectedPlan.days,
+        planPrice: selectedPlan.price,
+        userId: user.uid,
+        userName: user.displayName || 'User',
+      })
+    } catch (e) {
+      console.error('Payment request failed', e)
+    } finally {
+      setFeatureLoading(false)
+    }
+
+    const message = `Hi GigsNest! I want to feature my post "${job.title}" (ID: ${job.id}) for ${selectedPlan.days} days (₹${selectedPlan.price}). Please share payment details.`
+    const url = `https://wa.me/${GIGSNEST_WA}?text=${encodeURIComponent(message)}`
+    window.open(url, '_blank')
+    setShowFeatureModal(false)
   }
 
   const paymentWA = `https://wa.me/${GIGSNEST_WA}?text=${encodeURIComponent(`Hi GigsNest! I want to feature my post "${job.title}" (ID: ${job.id}) for ${selectedPlan.days} days (₹${selectedPlan.price}). Please share payment details.`)}`
@@ -270,11 +299,14 @@ export default function JobDetail() {
                 <p>2. We reply with UPI payment details</p>
                 <p>3. After payment → featured within 1 hour ✅</p>
               </div>
-              <a href={paymentWA} target="_blank" rel="noreferrer" onClick={() => setShowFeatureModal(false)}
-                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-white text-sm font-bold mb-2"
-                style={{ background: '#25D366', display: 'flex' }}>
+              <button
+                onClick={handleFeatureRequest}
+                disabled={featureLoading}
+                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-white text-sm font-bold mb-2 disabled:opacity-50"
+                style={{ background: '#25D366', display: 'flex' }}
+              >
                 💳 Pay ₹{selectedPlan.price} via WhatsApp
-              </a>
+              </button>
               <button onClick={() => setShowFeatureModal(false)} className="w-full text-xs py-2 hover:opacity-70" style={{ color: 'var(--muted)' }}>Cancel</button>
             </div>
           </div>

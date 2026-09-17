@@ -36,7 +36,7 @@ export default function MyJobs() {
               {loading ? 'Loading...' : `${jobs.length} job${jobs.length !== 1 ? 's' : ''} posted`}
             </p>
           </div>
-          <button onClick={() => navigate('/post')} className="btn-primary">+ Post New Job</button>
+          <button onClick={() => navigate('/post-job')} className="btn-primary">+ Post New Job</button>
         </div>
 
         {loading ? (
@@ -55,7 +55,7 @@ export default function MyJobs() {
             <p className="text-5xl mb-4">📋</p>
             <p className="font-bold text-xl mb-2" style={{ fontFamily: '"Playfair Display",serif', color: 'var(--forest)' }}>No posts yet</p>
             <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>Start by posting your first job listing</p>
-            <button onClick={() => navigate('/post')} className="btn-primary">Post a Job →</button>
+            <button onClick={() => navigate('/post-job')} className="btn-primary">Post a Job →</button>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -9,7 +9,7 @@ const JOBS = 'jobs'
 const CHATS = 'chats'
 
 // ── JOBS ──────────────────────────────────────────────────
-export async function createJob(jobData, user) {
+export async function createJob(jobData, user, phone) {
   const ref = await addDoc(collection(db, JOBS), {
     ...jobData,
     postedBy: { uid: user.uid, name: user.displayName, photo: user.photoURL },
@@ -18,6 +18,7 @@ export async function createJob(jobData, user) {
     featured: false,
     featuredUntil: null,
     views: 0,
+    phone: phone || '',
   })
   return ref.id
 }
@@ -35,9 +36,13 @@ export async function getJob(id) {
 }
 
 export async function getMyJobs(uid) {
-  const q = query(collection(db, JOBS), orderBy('createdAt', 'desc'))
+  const q = query(
+    collection(db, JOBS),
+    where('postedBy.uid', '==', uid),
+    orderBy('createdAt', 'desc')
+  )
   const snap = await getDocs(q)
-  return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(j => j.postedBy?.uid === uid)
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
 }
 
 export async function updateJob(id, data) {
@@ -55,9 +60,13 @@ export async function toggleSaveJob(jobId, uid, isSaved) {
 }
 
 export async function getSavedJobs(uid) {
-  const q = query(collection(db, JOBS), orderBy('createdAt', 'desc'))
+  const q = query(
+    collection(db, JOBS),
+    where('savedBy', 'array-contains', uid),
+    orderBy('createdAt', 'desc')
+  )
   const snap = await getDocs(q)
-  return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(j => Array.isArray(j.savedBy) && j.savedBy.includes(uid))
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
 }
 
 export async function incrementViews(id) {
@@ -65,7 +74,6 @@ export async function incrementViews(id) {
 }
 
 // ── CHATS ─────────────────────────────────────────────────
-// Unique chat doc ID — same two users on same job always get same chat
 function makeChatId(uid1, uid2, jobId) {
   return [uid1, uid2].sort().join('_') + '_' + jobId
 }
@@ -120,6 +128,47 @@ export async function getMyChats(uid) {
     where('participants', 'array-contains', uid),
     orderBy('lastMessageAt', 'desc')
   )
+  const snap = await getDocs(q)
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+}
+
+// ── FEATURED POSTS (ADMIN ONLY) ─────────────────────────────
+export async function activateFeaturedPost(jobId, days) {
+  const until = new Date()
+  until.setDate(until.getDate() + days)
+
+  await updateDoc(doc(db, JOBS, jobId), {
+    featured: true,
+    featuredUntil: until,
+  })
+}
+
+// ── PAYMENTS ────────────────────────────────────────────────
+export async function createPaymentRequest({ jobId, jobTitle, planDays, planPrice, userId, userName }) {
+  const ref = await addDoc(collection(db, 'payments'), {
+    jobId,
+    jobTitle,
+    planDays,
+    planPrice,
+    userId,
+    userName,
+    status: 'pending', // pending | paid | expired
+    createdAt: serverTimestamp(),
+    paidAt: null,
+    activatedAt: null,
+  })
+  return ref.id
+}
+
+export async function updatePaymentStatus(paymentId, status, extra = {}) {
+  const data = { status, ...extra }
+  if (status === 'paid') data.paidAt = serverTimestamp()
+  if (status === 'activated') data.activatedAt = serverTimestamp()
+  await updateDoc(doc(db, 'payments', paymentId), data)
+}
+
+export async function getPendingPayments() {
+  const q = query(collection(db, 'payments'), where('status', '==', 'pending'))
   const snap = await getDocs(q)
   return snap.docs.map(d => ({ id: d.id, ...d.data() }))
 }
