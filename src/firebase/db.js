@@ -1,7 +1,7 @@
 import {
   collection, addDoc, getDocs, getDoc, doc, setDoc,
   updateDoc, deleteDoc, query, where, orderBy,
-  serverTimestamp, arrayUnion, arrayRemove, onSnapshot,
+  serverTimestamp, arrayUnion, arrayRemove, onSnapshot, increment,
 } from 'firebase/firestore'
 import { db } from './config'
 
@@ -61,8 +61,7 @@ export async function getSavedJobs(uid) {
 }
 
 export async function incrementViews(id) {
-  const snap = await getDoc(doc(db, JOBS, id))
-  if (snap.exists()) await updateDoc(doc(db, JOBS, id), { views: (snap.data().views || 0) + 1 })
+  await updateDoc(doc(db, JOBS, id), { views: increment(1) })
 }
 
 // ── CHATS ─────────────────────────────────────────────────

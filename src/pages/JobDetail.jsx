@@ -35,9 +35,9 @@ export default function JobDetail() {
     getJob(id).then(j => {
       setJob(j)
       setLoading(false)
-      if (j && user?.uid !== j.postedBy?.uid) incrementViews(id).catch(() => {})
+      if (j && user && user.uid !== j.postedBy?.uid) incrementViews(id).catch(() => {})
     })
-  }, [id])
+  }, [id, user])
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--cream)' }}>
