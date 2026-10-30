@@ -1,96 +1,216 @@
-import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { useState } from 'react'
 
 export default function Navbar() {
-  const { user, signInWithGoogle, logout } = useAuth()
-  const navigate = useNavigate()
-  const location = useLocation()
-  const [menu, setMenu] = useState(false)
+  const { user, logout } = useAuth()
 
-  const active = (path) => location.pathname === path
+  const location = useLocation()
+  const navigate = useNavigate()
+  const containerRef = useRef(null)
+
+  const [openMenu, setOpenMenu] = useState(null)
+  const [error, setError] = useState('')
+  const [signingOut, setSigningOut] = useState(false)
+
+  useEffect(() => {
+    setOpenMenu(null)
+  }, [location.pathname, location.search])
+
+  useEffect(() => {
+    function handleOutsideClick(event) {
+      if (!containerRef.current?.contains(event.target)) {
+        setOpenMenu(null)
+      }
+    }
+
+    function handleEscape(event) {
+      if (event.key === 'Escape') {
+        setOpenMenu(null)
+      }
+    }
+
+    document.addEventListener('pointerdown', handleOutsideClick)
+    document.addEventListener('keydown', handleEscape)
+
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsideClick)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [])
+
+  function toggleMenu(name) {
+    setOpenMenu(current => (current === name ? null : name))
+  }
+
+  async function handleLogout() {
+    setSigningOut(true)
+    setError('')
+
+    try {
+      await logout()
+      setOpenMenu(null)
+      navigate('/')
+    } catch {
+      setError('Unable to sign out. Please try again.')
+    } finally {
+      setSigningOut(false)
+    }
+  }
+
+  const freelancerDestination = user
+    ? '/post-skill'
+    : '/signup?intent=freelancer'
 
   return (
-    <nav style={{ background: 'var(--forest)' }} className="sticky top-0 z-50 shadow-lg">
-      <div className="max-w-6xl mx-auto px-4 h-[60px] flex items-center justify-between gap-2">
-
-        <Link to="/" style={{ fontFamily: '"Playfair Display",serif', color: 'var(--cream)' }}
-          className="text-xl font-black tracking-tight flex-shrink-0">
-          Gig<span style={{ color: 'var(--gold)' }}>Nest</span>
+    <header className="gs-header" ref={containerRef}>
+      <div className="gs-container gs-navbar">
+        <Link to="/" className="gs-logo" aria-label="Gigspot home">
+          gigspot<span>.</span>
         </Link>
 
-        <div className="flex items-center gap-1.5">
-          {user && (
-            <>
-              <Link to="/messages"
-                className="text-xs px-3 py-1.5 rounded-lg transition-all hidden sm:flex items-center gap-1"
-                style={{ color: active('/messages') ? 'var(--gold)' : 'rgba(246,233,208,0.6)', background: active('/messages') ? 'rgba(246,233,208,0.08)' : 'transparent' }}>
-                💬 Messages
-              </Link>
-              <Link to="/my-jobs"
-                className="text-xs px-3 py-1.5 rounded-lg transition-all hidden sm:block"
-                style={{ color: active('/my-jobs') ? 'var(--gold)' : 'rgba(246,233,208,0.6)', background: active('/my-jobs') ? 'rgba(246,233,208,0.08)' : 'transparent' }}>
-                My Posts
-              </Link>
-            </>
-          )}
+        <nav className="gs-desktop-nav" aria-label="Main navigation">
+          <Link to="/?type=skills#explore">Explore services</Link>
+
+          <div className="gs-menu-container">
+            <button
+              type="button"
+              className="gs-nav-button"
+              aria-expanded={openMenu === 'pro'}
+              aria-controls="gigspot-pro-menu"
+              onClick={() => toggleMenu('pro')}
+            >
+              Gigspot Pro
+              <span aria-hidden="true">⌄</span>
+            </button>
+
+            {openMenu === 'pro' && (
+              <div className="gs-dropdown" id="gigspot-pro-menu">
+                <Link to="/?type=skills#explore">
+                  <strong>I am looking to hire</strong>
+                  <span>Find people who can bring your ideas to life.</span>
+                </Link>
+
+                <Link to={freelancerDestination}>
+                  <strong>I want to offer skills</strong>
+                  <span>Create a service and share your work.</span>
+                </Link>
+
+                <p>
+                  Free hiring and freelancing tools.
+                  No paid Pro subscription is offered yet.
+                </p>
+              </div>
+            )}
+          </div>
 
           {user ? (
-            <div className="flex items-center gap-1.5">
-              {/* Two separate post buttons */}
-              <button onClick={() => navigate('/post-job')}
-                className="hidden sm:block text-xs px-3 py-1.5 rounded-lg font-medium transition-all"
-                style={{ background: 'rgba(246,233,208,0.12)', color: 'var(--cream)', border: '1px solid rgba(246,233,208,0.15)' }}>
-                🧑‍💼 Post Job
-              </button>
-              <button onClick={() => navigate('/post-skill')}
-                className="text-xs px-3 py-1.5 rounded-lg font-medium transition-all"
-                style={{ background: 'var(--gold)', color: 'var(--forest)' }}>
-                🙋 Offer Skill
-              </button>
+            <>
+              <Link className="gs-button gs-button-spark" to="/post-job">Post a request</Link>
+              <NavLink to="/messages">Messages</NavLink>
+              <NavLink to="/my-skills">My Skills</NavLink>
+              <NavLink to="/my-jobs">My Jobs</NavLink>
 
-              {/* Avatar + menu */}
-              <div className="relative ml-1">
-                <button onClick={() => setMenu(!menu)}
-                  className="w-8 h-8 rounded-full overflow-hidden border-2 transition-all"
-                  style={{ borderColor: menu ? 'var(--gold)' : 'rgba(246,233,208,0.25)' }}>
-                  {user.photoURL
-                    ? <img src={user.photoURL} alt="" className="w-full h-full object-cover" />
-                    : <div className="w-full h-full flex items-center justify-center text-xs font-bold"
-                        style={{ background: 'var(--gold)', color: 'var(--forest)' }}>
-                        {user.displayName?.[0] || '?'}
-                      </div>
-                  }
+              <div className="gs-menu-container">
+                <button
+                  type="button"
+                  className="gs-avatar"
+                  onClick={() => toggleMenu('account')}
+                  aria-label="Open account menu"
+                  aria-expanded={openMenu === 'account'}
+                  aria-controls="gigspot-account-menu"
+                >
+                  {(user.displayName || user.email || 'G')
+                    .charAt(0)
+                    .toUpperCase()}
                 </button>
-                {menu && (
-                  <div className="absolute right-0 top-11 rounded-xl shadow-2xl p-1.5 w-52 z-50"
-                    style={{ background: 'var(--cream)', border: '1px solid rgba(4,50,34,0.15)' }}
-                    onMouseLeave={() => setMenu(false)}>
-                    <div className="px-3 py-2 mb-1">
-                      <p className="text-xs font-medium truncate" style={{ color: 'var(--forest)' }}>{user.displayName}</p>
-                      <p className="text-[10px] truncate" style={{ color: 'var(--muted)' }}>{user.email}</p>
+
+                {openMenu === 'account' && (
+                  <div className="gs-dropdown" id="gigspot-account-menu">
+                    <div className="gs-account-summary">
+                      <strong>{user.displayName || 'Gigspot member'}</strong>
+                      <span>{user.email}</span>
                     </div>
-                    <hr style={{ borderColor: 'rgba(4,50,34,0.1)' }} className="mb-1" />
-                    <Link to="/post-job" onClick={() => setMenu(false)} className="flex items-center gap-2 px-3 py-2 text-xs rounded-lg hover:bg-black/5" style={{ color: 'var(--forest)' }}>🧑‍💼 Post a Job</Link>
-                    <Link to="/post-skill" onClick={() => setMenu(false)} className="flex items-center gap-2 px-3 py-2 text-xs rounded-lg hover:bg-black/5" style={{ color: 'var(--forest)' }}>🙋 Offer a Skill</Link>
-                    <Link to="/my-jobs" onClick={() => setMenu(false)} className="flex items-center gap-2 px-3 py-2 text-xs rounded-lg hover:bg-black/5 sm:hidden" style={{ color: 'var(--forest)' }}>📋 My Posts</Link>
-                    <Link to="/saved" onClick={() => setMenu(false)} className="flex items-center gap-2 px-3 py-2 text-xs rounded-lg hover:bg-black/5" style={{ color: 'var(--forest)' }}>🔖 Saved Jobs</Link>
-                    <Link to="/messages" onClick={() => setMenu(false)} className="flex items-center gap-2 px-3 py-2 text-xs rounded-lg hover:bg-black/5 sm:hidden" style={{ color: 'var(--forest)' }}>💬 Messages</Link>
-                    <hr style={{ borderColor: 'rgba(4,50,34,0.1)' }} className="my-1" />
-                    <button onClick={() => { logout(); setMenu(false) }} className="w-full text-left px-3 py-2 text-xs rounded-lg hover:bg-red-50" style={{ color: '#dc2626' }}>Sign out</button>
+
+                    <Link to="/post-skill">Offer a skill</Link>
+                    <Link to="/post-job">Post a hiring request</Link>
+                    <Link to="/saved">Saved listings</Link>
+
+                    <button
+                      type="button"
+                      className="gs-dropdown-action"
+                      onClick={handleLogout}
+                      disabled={signingOut}
+                    >
+                      {signingOut ? 'Signing out…' : 'Sign out'}
+                    </button>
                   </div>
                 )}
               </div>
-            </div>
+            </>
           ) : (
-            <button onClick={signInWithGoogle}
-              className="text-xs px-4 py-2 rounded-lg font-medium transition-all"
-              style={{ background: 'var(--gold)', color: 'var(--forest)' }}>
-              Sign in
-            </button>
+            <>
+              <Link to={freelancerDestination}>Join as freelancer</Link>
+              <Link to="/signin">Sign in</Link>
+              <Link className="gs-button gs-button-outline" to="/signup">
+                Join
+              </Link>
+            </>
           )}
-        </div>
+        </nav>
+
+        <button
+          type="button"
+          className="gs-mobile-toggle"
+          onClick={() => toggleMenu('mobile')}
+          aria-label="Toggle navigation"
+          aria-expanded={openMenu === 'mobile'}
+          aria-controls="gigspot-mobile-menu"
+        >
+          {openMenu === 'mobile' ? 'Close' : 'Menu'}
+        </button>
       </div>
-    </nav>
+
+      {openMenu === 'mobile' && (
+        <nav
+          className="gs-mobile-nav gs-container"
+          id="gigspot-mobile-menu"
+          aria-label="Mobile navigation"
+        >
+          <Link to="/?type=skills#explore">I am looking to hire</Link>
+          <Link to={freelancerDestination}>I want to offer skills</Link>
+
+          {user ? (
+            <>
+              <Link to="/post-job">Post a request</Link>
+              <Link to="/my-skills">My Skills</Link>
+              <Link to="/my-jobs">My Jobs</Link>
+              <Link to="/messages">Messages</Link>
+              <Link to="/saved">Saved listings</Link>
+
+              <button
+                type="button"
+                className="gs-nav-button"
+                disabled={signingOut}
+                onClick={handleLogout}
+              >
+                Sign out
+              </button>
+            </>
+          ) : (
+            <>
+              <Link to="/signin">Sign in</Link>
+              <Link to="/signup">Create account</Link>
+            </>
+          )}
+        </nav>
+      )}
+
+      {error && (
+        <div className="gs-container">
+          <p className="gs-alert" role="alert">{error}</p>
+        </div>
+      )}
+    </header>
   )
 }

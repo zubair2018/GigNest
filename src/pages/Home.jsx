@@ -1,395 +1,284 @@
-import { useState, useMemo } from 'react'
-import { useJobs } from '../hooks/useJobs'
+import { useMemo, useRef } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+
+import Hero from '../components/Hero'
+import PopularServices from '../components/PopularServices'
+import Footer from '../components/Footer'
 import JobCard from '../components/JobCard'
-import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
-
-const CATS = [
-  { label: 'All',       emoji: '🌐' },
-  { label: 'Tech',      emoji: '💻' },
-  { label: 'Design',    emoji: '🎨' },
-  { label: 'Local',     emoji: '📍' },
-  { label: 'Content',   emoji: '✍️' },
-  { label: 'Education', emoji: '📚' },
-]
-
-const SORT_OPTIONS = [
-  { value: 'newest',   label: 'Newest first' },
-  { value: 'pay-high', label: 'Highest pay' },
-  { value: 'pay-low',  label: 'Lowest pay' },
-]
-
-const HOW_IT_WORKS = [
-  {
-    emoji: '📋',
-    title: 'Client Posts a Job',
-    desc: 'A client posts exactly what skill they need — React dev, plumber, video editor, tutor — with their budget.',
-  },
-  {
-    emoji: '🔍',
-    title: 'Freelancer Finds the Match',
-    desc: 'Browse by category, search by skill or location. Find the opportunity that matches what you offer.',
-  },
-  {
-    emoji: '💬',
-    title: 'Connect via In-App Chat',
-    desc: 'Click "Message" on any listing — a private chat opens instantly between client and freelancer.',
-  },
-]
+import { useMarketplace } from '../hooks/useMarketplace'
+import { matchesListingSearch, sortListings } from '../shared/search'
 
 export default function Home() {
-  const [cat, setCat]       = useState('All')
-  const [search, setSearch] = useState('')
-  const [sort, setSort]     = useState('newest')
+  const [params, setParams] = useSearchParams()
+  const resultsRef = useRef(null)
 
-  const { jobs, loading, refresh } = useJobs()
-  const { user, signInWithGoogle } = useAuth()
-  const navigate = useNavigate()
+  const {
+    jobs = [],
+    skills = [],
+    jobsLoading,
+    skillsLoading,
+    jobsError,
+    skillsError,
+    hasMore,
+    loadingMore,
+    loadMore,
+    refresh,
+  } = useMarketplace()
 
-  const filtered = useMemo(() => {
-    let list = [...jobs]
+  const query = params.get('q') || ''
+  const listingType = ['all', 'skills', 'jobs'].includes(params.get('type')) ? params.get('type') : 'all'
+  const sort = ['newest', 'price-low', 'price-high'].includes(params.get('sort')) ? params.get('sort') : 'newest'
+  const category = params.get('category') || 'All'
+  const location = params.get('location') || ''
 
-    if (cat !== 'All') {
-      list = list.filter(j => j.category === cat)
+  const filteredSkills = useMemo(() => {
+    return sortListings(skills.filter(item => matchesListingSearch(item, { query, category, location })), sort)
+  }, [skills, query, category, location, sort])
+
+  const filteredJobs = useMemo(() => {
+    return sortListings(jobs.filter(item => matchesListingSearch(item, { query, category, location })), sort)
+  }, [jobs, query, category, location, sort])
+
+  function updateFilter(name, value) {
+    const next = new URLSearchParams(params)
+
+    if (value) {
+      next.set(name, value)
+    } else {
+      next.delete(name)
     }
 
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      list = list.filter(j =>
-        [j.title, j.description, j.location, ...(j.tags || [])]
-          .join(' ')
-          .toLowerCase()
-          .includes(q)
-      )
-    }
+    setParams(next, { replace: true })
+  }
 
-    if (sort === 'pay-high') list.sort((a, b) => b.payMax - a.payMax)
-    if (sort === 'pay-low')  list.sort((a, b) => a.payMin - b.payMin)
+  function searchServices(value) {
+    const next = new URLSearchParams()
 
-    return list
-  }, [jobs, cat, search, sort])
+    if (value.trim()) next.set('q', value.trim())
 
-  const activeCatEmoji = CATS.find(c => c.label === cat)?.emoji || '🌐'
-
-  function scrollToJobs() {
-    document.getElementById('jobs-section')?.scrollIntoView({ behavior: 'smooth' })
+    next.set('type', 'skills')
+    setParams(next)
+    window.requestAnimationFrame(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--cream)' }}>
+    <div className="gs-site">
+      <main>
+        <div className="gs-container">
+          <Hero onSearch={searchServices} />
+          <PopularServices onSelect={searchServices} />
 
-      {/* ── Hero ── */}
-      <div className="relative overflow-hidden px-5 pt-12 pb-10" style={{ background: 'var(--forest)' }}>
-        <div
-          className="absolute right-[-80px] top-[-80px] w-[300px] h-[300px] rounded-full pointer-events-none"
-          style={{ border: '1px solid rgba(246,233,208,0.07)' }}
-        />
-        <div className="max-w-6xl mx-auto relative">
-          <div className="flex items-center gap-2 mb-4 text-[11px] uppercase tracking-widest" style={{ color: 'var(--gold)' }}>
-            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--gold)' }} />
-            Kashmir & beyond
-          </div>
-
-          <h1
-            className="font-black tracking-tight leading-none mb-4"
-            style={{ fontFamily: '"Playfair Display",serif', fontSize: 'clamp(32px,6vw,52px)', color: 'var(--cream)' }}
+          <section
+            className="gs-section gs-explore-section"
+            id="explore"
+            ref={resultsRef}
           >
-            Find local <em style={{ color: 'var(--gold)' }}>gigs</em> &<br />hire real talent
-          </h1>
-
-          <p className="text-base mb-8 max-w-md leading-relaxed" style={{ color: 'rgba(246,233,208,0.6)' }}>
-            Post jobs, offer skills, connect instantly. The hyperlocal marketplace built for your city — 100% free.
-          </p>
-
-          <div className="flex gap-3 flex-wrap">
-            {user ? (
-              <button onClick={() => navigate('/post-job')} className="btn-gold">
-                🧑‍💼 Post a Job
-              </button>
-            ) : (
-              <button onClick={signInWithGoogle} className="btn-gold">
-                Get Started Free →
-              </button>
-            )}
-            <button onClick={scrollToJobs} className="btn-ghost">
-              Browse Gigs ↓
-            </button>
-          </div>
-
-          <div className="flex gap-10 mt-10 pt-8" style={{ borderTop: '1px solid rgba(246,233,208,0.1)' }}>
-            {[
-              { n: jobs.length, l: 'Active Listings' },
-              { n: 5,           l: 'Categories' },
-              { n: '100%',      l: 'Free' },
-            ].map(s => (
-              <div key={s.l}>
-                <p className="font-bold text-2xl" style={{ fontFamily: '"Playfair Display",serif', color: 'var(--cream)' }}>
-                  {s.n}
-                </p>
-                <p className="mt-0.5 text-[11px] uppercase tracking-widest" style={{ color: 'rgba(246,233,208,0.4)' }}>
-                  {s.l}
-                </p>
+            <div className="gs-section-heading">
+              <div>
+                <p className="gs-eyebrow">Find your next connection</p>
+                <h2>{query ? `Results for “${query}”` : 'Explore Gigspot'}</h2>
               </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Sign-in banner ── */}
-      {!user && (
-        <div
-          className="px-5 py-3.5"
-          style={{ background: 'rgba(201,168,76,0.12)', borderBottom: '1px solid rgba(201,168,76,0.2)' }}
-        >
-          <div className="max-w-6xl mx-auto flex items-center justify-between gap-4 flex-wrap">
-            <p className="text-sm" style={{ color: 'var(--forest)' }}>
-              🔐 <strong>Sign in free</strong> to post jobs, save listings & chat with clients
-            </p>
-            <button onClick={signInWithGoogle} className="btn-primary text-xs whitespace-nowrap">
-              Sign in with Google →
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Category tabs ── */}
-      <div
-        className="sticky top-[60px] z-40"
-        style={{ background: 'var(--forest)', borderBottom: '1px solid rgba(246,233,208,0.1)' }}
-      >
-        <div className="max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto py-2">
-          {CATS.map(c => (
-            <button
-              key={c.label}
-              onClick={() => setCat(c.label)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-medium transition-all whitespace-nowrap flex-shrink-0 cursor-pointer"
-              style={{
-                background: cat === c.label ? 'var(--gold)'              : 'rgba(246,233,208,0.08)',
-                color:      cat === c.label ? 'var(--forest)'            : 'rgba(246,233,208,0.7)',
-                border:     cat === c.label ? '1px solid transparent'    : '1px solid rgba(246,233,208,0.1)',
-              }}
-            >
-              {c.emoji} {c.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Search + Sort ── */}
-      <div
-        className="px-4 py-3 flex gap-2 items-center flex-wrap"
-        style={{ background: 'var(--cream2)', borderBottom: '1px solid rgba(4,50,34,0.1)' }}
-      >
-        <div className="relative flex-1 min-w-[180px]">
-          <svg
-            className="absolute left-3 top-1/2 -translate-y-1/2"
-            width="13" height="13" viewBox="0 0 24 24"
-            fill="none" stroke="var(--muted)" strokeWidth="2.5"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.35-4.35" />
-          </svg>
-          <input
-            type="text"
-            placeholder={`Search ${cat === 'All' ? 'all listings' : cat + ' listings'}...`}
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="input pl-8 h-9 text-sm"
-          />
-        </div>
-
-        <select
-          value={sort}
-          onChange={e => setSort(e.target.value)}
-          className="input h-9 text-xs w-auto cursor-pointer"
-        >
-          {SORT_OPTIONS.map(o => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-
-        {user && (
-          <div className="flex gap-1.5">
-            <button
-              onClick={() => navigate('/post-job')}
-              className="btn-primary text-xs h-9 px-3 whitespace-nowrap"
-            >
-              🧑‍💼 Post Job
-            </button>
-            <button
-              onClick={() => navigate('/post-skill')}
-              className="btn-gold text-xs h-9 px-3 whitespace-nowrap"
-            >
-              🙋 Offer Skill
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* ── Active category chip ── */}
-      {cat !== 'All' && (
-        <div className="px-4 pt-3 max-w-6xl mx-auto flex items-center gap-2">
-          <span
-            className="text-xs px-3 py-1.5 rounded-full font-medium flex items-center gap-1.5"
-            style={{ background: 'var(--forest)', color: 'var(--cream)' }}
-          >
-            {activeCatEmoji} {cat}
-            <button
-              onClick={() => setCat('All')}
-              className="ml-1 opacity-70 hover:opacity-100"
-            >
-              ✕
-            </button>
-          </span>
-          <span className="text-xs" style={{ color: 'var(--muted)' }}>
-            {filtered.length} listing{filtered.length !== 1 ? 's' : ''} found
-          </span>
-        </div>
-      )}
-
-      {/* ── Jobs grid ── */}
-      <div id="jobs-section" className="max-w-6xl mx-auto px-4 py-6">
-        {cat === 'All' && !search && (
-          <div className="flex items-center justify-between mb-5">
-            <h2
-              className="font-bold text-xl"
-              style={{ fontFamily: '"Playfair Display",serif', color: 'var(--forest)' }}
-            >
-              Latest Listings
-              <span
-                className="ml-2 font-normal text-sm"
-                style={{ color: 'var(--muted)', fontFamily: '"DM Sans",sans-serif' }}
-              >
-                {filtered.length} total
-              </span>
-            </h2>
-          </div>
-        )}
-
-        {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[...Array(6)].map((_, i) => (
-              <div
-                key={i}
-                className="rounded-2xl p-5 animate-pulse"
-                style={{ background: '#fff', border: '1px solid rgba(4,50,34,0.08)' }}
-              >
-                <div className="h-3 w-16 rounded-full mb-4" style={{ background: 'var(--cream2)' }} />
-                <div className="h-5 w-3/4 rounded mb-2"   style={{ background: 'var(--cream2)' }} />
-                <div className="h-3 w-1/2 rounded mb-4"   style={{ background: 'var(--cream2)' }} />
-                <div className="h-16 rounded mb-4"         style={{ background: 'var(--cream)' }} />
-                <div className="h-9 rounded"               style={{ background: 'var(--cream)' }} />
-              </div>
-            ))}
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-20">
-            <p className="text-5xl mb-4">{cat !== 'All' ? activeCatEmoji : '🔍'}</p>
-            <p
-              className="font-bold text-xl mb-2"
-              style={{ fontFamily: '"Playfair Display",serif', color: 'var(--forest)' }}
-            >
-              No {cat !== 'All' ? cat : ''} listings found
-            </p>
-            <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>
-              {cat !== 'All' ? `No ${cat} listings yet.` : 'Try a different search term.'} Be the first!
-            </p>
-            <div className="flex gap-3 justify-center flex-wrap">
-              {cat !== 'All' && (
-                <button onClick={() => setCat('All')} className="btn-outline">
-                  Show all listings
-                </button>
-              )}
-              {user && (
-                <button onClick={() => navigate('/post-job')} className="btn-primary">
-                  Post a Job →
-                </button>
-              )}
             </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map(job => (
-              <JobCard key={job.id} job={job} onSaveToggle={refresh} />
-            ))}
-          </div>
-        )}
-      </div>
 
-      {/* ── How it works ── */}
-      <div className="px-4 py-12" style={{ background: 'var(--forest)' }}>
-        <div className="max-w-6xl mx-auto">
-          <h2
-            className="font-black text-2xl mb-2 text-center"
-            style={{ fontFamily: '"Playfair Display",serif', color: 'var(--cream)' }}
-          >
-            How GigNest Works
-          </h2>
-          <p className="text-center text-sm mb-10" style={{ color: 'rgba(246,233,208,0.5)' }}>
-            Connect skills with needs — in 3 simple steps
-          </p>
+            <div className="gs-results-toolbar">
+              <label className="gs-sr-only" htmlFor="results-search">
+                Search listings
+              </label>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
-            {HOW_IT_WORKS.map(s => (
-              <div
-                key={s.title}
-                className="rounded-2xl p-5 text-center"
-                style={{ background: 'rgba(246,233,208,0.06)', border: '1px solid rgba(246,233,208,0.1)' }}
+              <input
+                id="results-search"
+                type="search"
+                value={query}
+                onChange={event => updateFilter('q', event.target.value)}
+                placeholder="Search by skill, service, or location"
+                maxLength={100}
+              />
+
+              <label className="gs-sr-only" htmlFor="listing-type">
+                Listing type
+              </label>
+
+              <select
+                id="listing-type"
+                value={listingType}
+                onChange={event => updateFilter('type', event.target.value)}
               >
-                <div className="text-3xl mb-3">{s.emoji}</div>
-                <h3
-                  className="font-bold text-base mb-2"
-                  style={{ fontFamily: '"Playfair Display",serif', color: 'var(--cream)' }}
-                >
-                  {s.title}
-                </h3>
-                <p className="text-xs leading-relaxed" style={{ color: 'rgba(246,233,208,0.55)' }}>
-                  {s.desc}
-                </p>
-              </div>
-            ))}
-          </div>
+                <option value="all">All listings</option>
+                <option value="skills">Skill providers</option>
+                <option value="jobs">Jobs and opportunities</option>
+              </select>
 
-          {/* Offer skill CTA */}
-          <div
-            className="rounded-2xl p-6 text-center"
-            style={{ background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)' }}
-          >
-            <p
-              className="font-bold text-lg mb-1"
-              style={{ fontFamily: '"Playfair Display",serif', color: 'var(--gold)' }}
-            >
-              Have a skill to offer?
-            </p>
-            <p className="text-sm mb-4" style={{ color: 'rgba(246,233,208,0.6)' }}>
-              Post your service — describe what you do, your rate, and location. Clients will message you directly.
-            </p>
-            {user ? (
-              <button onClick={() => navigate('/post-skill')} className="btn-gold">
-                🙋 Post Your Skill →
+              <label className="gs-sr-only" htmlFor="listing-category">Category</label>
+              <select
+                id="listing-category"
+                value={category}
+                onChange={event => updateFilter('category', event.target.value === 'All' ? '' : event.target.value)}
+              >
+                <option value="All">All categories</option>
+                {['Tech', 'Design', 'Local', 'Content', 'Education'].map(item => (
+                  <option value={item} key={item}>{item}</option>
+                ))}
+              </select>
+
+              <label className="gs-sr-only" htmlFor="listing-location">Location</label>
+              <input
+                id="listing-location"
+                type="search"
+                value={location}
+                onChange={event => updateFilter('location', event.target.value)}
+                placeholder="Location"
+                maxLength={80}
+              />
+
+              <label className="gs-sr-only" htmlFor="listing-sort">
+                Sort listings
+              </label>
+
+              <select
+                id="listing-sort"
+                value={sort}
+                onChange={event => updateFilter('sort', event.target.value)}
+              >
+                <option value="newest">Newest first</option>
+                <option value="price-low">Lowest price</option>
+                <option value="price-high">Highest price</option>
+              </select>
+
+              <button
+                type="button"
+                className="gs-text-button"
+                onClick={() => setParams({})}
+              >
+                Clear
               </button>
-            ) : (
-              <button onClick={signInWithGoogle} className="btn-gold">
-                Sign in & Offer Skills →
-              </button>
+            </div>
+
+            {listingType !== 'jobs' && (
+              <ListingSection
+                title="People offering skills"
+                description="Meet professionals and discover what they can do."
+                items={filteredSkills}
+                refresh={refresh}
+                loading={skillsLoading}
+                error={skillsError}
+                onLoadMore={() => loadMore('skills')}
+                hasMore={hasMore.skills}
+                loadingMore={loadingMore.skills}
+                skills
+              />
             )}
-          </div>
+
+            {listingType !== 'skills' && (
+              <ListingSection
+                title="Jobs and opportunities"
+                description="Hiring requests publish immediately and may be suspended for policy violations."
+                items={filteredJobs}
+                refresh={refresh}
+                loading={jobsLoading}
+                error={jobsError}
+                onLoadMore={() => loadMore('jobs')}
+                hasMore={hasMore.jobs}
+                loadingMore={loadingMore.jobs}
+              />
+            )}
+          </section>
+
+          <section className="gs-join-banner">
+            <div>
+              <p className="gs-eyebrow">Your skills deserve a spotlight</p>
+              <h2>Do what you love.<br />Find people who need it.</h2>
+              <p>
+                Create a profile, show your work, and start a conversation.
+              </p>
+            </div>
+
+            <Link
+              className="gs-button gs-button-spark"
+              to="/signup?intent=freelancer"
+            >
+              Join as freelancer →
+            </Link>
+          </section>
         </div>
+      </main>
+
+      <Footer />
+    </div>
+  )
+}
+
+function ListingSection({
+  title,
+  description,
+  items,
+  refresh,
+  skills = false,
+  loading,
+  error,
+  onLoadMore,
+  hasMore,
+  loadingMore,
+}) {
+  return (
+    <section className="gs-listing-section">
+      <div className="gs-listing-heading">
+        <div>
+          <h3>{title}</h3>
+          <p>{description}</p>
+        </div>
+
+        <span>{items.length} found</span>
       </div>
 
-      {/* ── Footer ── */}
-      <footer
-        className="text-center py-8 text-xs"
-        style={{ color: 'var(--muted)', borderTop: '1px solid rgba(4,50,34,0.1)' }}
-      >
-        <p
-          className="font-bold mb-1"
-          style={{ fontFamily: '"Playfair Display",serif', color: 'var(--forest)', fontSize: 15 }}
-        >
-          GigNest
-        </p>
-        <p>Hyperlocal jobs & skills — Kashmir & beyond · 100% Free</p>
-      </footer>
+      {error ? (
+        <div className="gs-alert" role="alert">
+          <p>{error}</p>
+          <button type="button" onClick={refresh}>Try again</button>
+        </div>
+      ) : loading ? (
+        <LoadingCards />
+      ) : items.length === 0 ? (
+        <div className="gs-empty-state">
+          <h4>No matching listings yet</h4>
+          <p>
+            Try a different search or be among the first to share a listing.
+          </p>
+        </div>
+      ) : (
+        <div className={skills ? 'gs-skills-row' : 'gs-jobs-grid'}>
+          {items.map(item => (
+            <div key={item.id} className={skills ? 'gs-skill-item' : ''}>
+              <JobCard
+                job={item}
+                compact={skills}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!loading && !error && hasMore && (
+        <div className="gs-load-more-wrap">
+          <p>Search currently covers the loaded listings. Load more to expand results.</p>
+          <button className="gs-button gs-button-outline" onClick={onLoadMore} disabled={loadingMore}>
+            {loadingMore ? 'Loading…' : 'Load more'}
+          </button>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function LoadingCards() {
+  return (
+    <div className="gs-jobs-grid" aria-label="Loading listings" aria-busy="true">
+      {[1, 2, 3].map(item => (
+        <div className="gs-skeleton-card" key={item}>
+          <div />
+          <span />
+          <span />
+        </div>
+      ))}
     </div>
   )
 }

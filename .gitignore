@@ -1,14 +1,21 @@
-# Dependencies
-node_modules/
+# Dependencies and builds
+node_modules
+dist
+dist-admin
 
-# Build output
-dist/
-
-# Environment & secrets — NEVER commit these
+# Environment secrets
 .env
 .env.local
-.env.production
+.env.*.local
 
-# Editor
+# Firebase service account keys
+serviceAccountKey.json
+firebase-service-account.json
+
+# Firebase Functions dependencies
+functions/node_modules
+src/functions/node_modules
+
+# Editor and operating system files
+.vscode
 .DS_Store
-.vscode/

@@ -1,6 +1,9 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ['./index.html', './src/**/*.{js,jsx}'],
+  content: [
+    './index.html',
+    './src/**/*.{js,jsx}',
+  ],
   theme: {
     extend: {
       fontFamily: {
@@ -8,9 +11,9 @@ export default {
         dm: ['"DM Sans"', 'sans-serif'],
       },
       colors: {
-        cream: '#f6e9d0',
-        forest: '#043222',
-        gold: '#c9a84c',
+        cream: '#f8faf7',
+        forest: '#073b2a',
+        gold: '#b5ff47',
       },
     },
   },

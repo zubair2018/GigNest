@@ -1,87 +1,435 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: is admin?
-    function isAdmin() {
-      return request.auth != null
-        && request.auth.token.admin == true;
+    function signedIn() {
+      return request.auth != null;
     }
 
-    match /jobs/{jobId} {
-      allow read: if true;
+    function verifiedUser() {
+      return signedIn() && request.auth.token.email_verified == true;
+    }
 
-      allow create: if request.auth != null
-        && request.resource.data.postedBy.uid == request.auth.uid
-        && request.resource.data.title is string
-        && request.resource.data.title.size() > 0
-        // Normal users cannot set featured fields
-        && (request.resource.data.featured == false || request.resource.data.featured == null)
-        && (request.resource.data.featuredUntil == null || request.resource.data.featuredUntil == null);
-
-      // Owner can update content fields only
-      allow update: if request.auth != null
-        && resource.data.postedBy.uid == request.auth.uid
-        && request.resource.data.postedBy == resource.data.postedBy
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'title', 'category', 'location', 'description',
-          'payMin', 'payMax', 'payType', 'phone', 'tags', 'type'
-        ])
-        // Owner cannot change featured fields
-        && (request.resource.data.featured == resource.data.featured)
-        && (request.resource.data.featuredUntil == resource.data.featuredUntil);
-
-      // Anyone can save/unsave
-      allow update: if request.auth != null
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['savedBy']);
-
-      // Anyone can increment views
-      allow update: if request.auth != null
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views'])
-        && request.resource.data.views is number
-        && request.resource.data.views >= resource.data.views;
-
-      // Only admin can set featured status
-      allow update: if isAdmin()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['featured', 'featuredUntil']);
-
-      allow delete: if request.auth != null
+    function isOwner() {
+      return signedIn()
         && resource.data.postedBy.uid == request.auth.uid;
     }
 
-    match /chats/{chatId} {
-      allow read: if request.auth != null
-        && request.auth.uid in resource.data.participants;
+    function isAdmin() {
+      return signedIn()
+        && request.auth.token.role == 'admin';
+    }
 
-      allow create: if request.auth != null
-        && request.auth.uid in request.resource.data.participants
-        && request.resource.data.participants.size() == 2;
+    function hasOnlyChanged(allowedFields) {
+      return request.resource.data
+        .diff(resource.data)
+        .affectedKeys()
+        .hasOnly(allowedFields);
+    }
 
-      allow update: if request.auth != null
-        && request.auth.uid in resource.data.participants
-        && request.resource.data.participants == resource.data.participants;
+    function validCategory(category) {
+      return category in [
+        'Tech',
+        'Design',
+        'Local',
+        'Content',
+        'Education'
+      ];
+    }
 
-      match /messages/{messageId} {
-        allow read: if request.auth != null
-          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+    function validPayType(payType) {
+      return payType in [
+        '/project',
+        '/month',
+        '/day',
+        '/hour',
+        '/job'
+      ];
+    }
 
-        allow create: if request.auth != null
-          && request.resource.data.senderUid == request.auth.uid
-          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
-          && request.resource.data.text is string
-          && request.resource.data.text.size() > 0;
+    function validAvailability(value) {
+      return value in ['remote', 'onsite', 'hybrid'];
+    }
+
+    function validPortfolioLink(link) {
+      return link is map
+        && link.keys().hasOnly(['label', 'url'])
+        && link.keys().hasAll(['label', 'url'])
+        && link.label is string
+        && link.label.size() <= 80
+        && link.url is string
+        && link.url.size() <= 2048
+        && link.url.matches('^https://[^\\s/@?#]+([/?#][^\\s]*)?$');
+    }
+
+    function validPortfolio(data) {
+      return data.portfolio is list
+        && data.portfolio.size() <= 5
+        && (data.portfolio.size() < 1 || validPortfolioLink(data.portfolio[0]))
+        && (data.portfolio.size() < 2 || validPortfolioLink(data.portfolio[1]))
+        && (data.portfolio.size() < 3 || validPortfolioLink(data.portfolio[2]))
+        && (data.portfolio.size() < 4 || validPortfolioLink(data.portfolio[3]))
+        && (data.portfolio.size() < 5 || validPortfolioLink(data.portfolio[4]));
+    }
+
+    function validTags(data) {
+      return data.tags is list
+        && data.tags.size() <= 5
+        && (data.tags.size() < 1 || data.tags[0] is string && data.tags[0].size() <= 40)
+        && (data.tags.size() < 2 || data.tags[1] is string && data.tags[1].size() <= 40)
+        && (data.tags.size() < 3 || data.tags[2] is string && data.tags[2].size() <= 40)
+        && (data.tags.size() < 4 || data.tags[3] is string && data.tags[3].size() <= 40)
+        && (data.tags.size() < 5 || data.tags[4] is string && data.tags[4].size() <= 40);
+    }
+
+    function validPoster(poster, uid) {
+      return poster is map
+        && poster.keys().hasOnly(['uid', 'name', 'photo'])
+        && poster.keys().hasAll(['uid', 'name', 'photo'])
+        && poster.uid == uid
+        && poster.name is string
+        && poster.name.size() <= 80
+        && poster.photo is string
+        && poster.photo.size() <= 2048;
+    }
+
+    function validUserProfile(data) {
+      return data.name is string
+        && data.name.size() >= 2
+        && data.name.size() <= 60
+        && data.email == request.auth.token.email
+        && data.photo is string
+        && data.photo.size() <= 2048
+        && data.lastLoginAt == request.time;
+    }
+
+    function validListingContent(data) {
+      return data.title is string
+        && data.title.size() >= 5
+        && data.title.size() <= 100
+        && data.description is string
+        && data.description.size() >= 20
+        && data.description.size() <= 3000
+        && data.location is string
+        && data.location.size() >= 2
+        && data.location.size() <= 80
+        && validCategory(data.category)
+        && validPayType(data.payType)
+        && data.payMin is number
+        && data.payMax is number
+        && data.payMin >= 0
+        && data.payMax >= data.payMin
+        && data.payMax <= 1000000000
+        && validTags(data)
+        && validAvailability(data.availability)
+        && validPortfolio(data);
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.keys().hasOnly([
+          'uid', 'name', 'email', 'photo', 'createdAt', 'lastLoginAt'
+        ])
+        && validUserProfile(request.resource.data);
+
+      allow update: if signedIn()
+        && request.auth.uid == userId
+        && validUserProfile(request.resource.data)
+        && hasOnlyChanged([
+          'name',
+          'email',
+          'photo',
+          'lastLoginAt'
+        ]);
+
+      allow delete: if false;
+
+      match /savedListings/{savedId} {
+        allow read: if signedIn() && request.auth.uid == userId;
+
+        allow create: if signedIn()
+          && request.auth.uid == userId
+          && request.resource.data.keys().hasOnly(['collectionName', 'listingId', 'createdAt'])
+          && request.resource.data.collectionName in ['jobs', 'skills']
+          && request.resource.data.listingId is string
+          && request.resource.data.listingId.matches('^[A-Za-z0-9_-]{1,150}$')
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.createdAt is timestamp
+          && savedId == request.resource.data.collectionName + '_' + request.resource.data.listingId
+          && ((request.resource.data.collectionName == 'jobs'
+            && exists(/databases/$(database)/documents/jobs/$(request.resource.data.listingId))
+            && get(/databases/$(database)/documents/jobs/$(request.resource.data.listingId)).data.status == 'published'
+            && get(/databases/$(database)/documents/jobs/$(request.resource.data.listingId)).data.privacySafe == true)
+            || (request.resource.data.collectionName == 'skills'
+            && exists(/databases/$(database)/documents/skills/$(request.resource.data.listingId))
+            && get(/databases/$(database)/documents/skills/$(request.resource.data.listingId)).data.status == 'published'
+            && get(/databases/$(database)/documents/skills/$(request.resource.data.listingId)).data.privacySafe == true));
+
+        allow update: if false;
+        allow delete: if signedIn() && request.auth.uid == userId;
       }
     }
 
-    // Payments collection (admin + owner)
+    match /jobs/{jobId} {
+        allow read: if (resource != null && resource.data.status == 'published'
+          && resource.data.privacySafe == true)
+        || (signedIn() && resource != null && resource.data.postedBy.uid == request.auth.uid)
+        || isAdmin();
+
+      allow create: if verifiedUser()
+        && validPoster(request.resource.data.postedBy, request.auth.uid)
+        && request.resource.data.type == 'job'
+        && request.resource.data.status == 'published'
+        && request.resource.data.privacySafe == true
+        && request.resource.data.publishedAt is timestamp
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.featured == false
+        && request.resource.data.featuredUntil == null
+        && request.resource.data.views == 0
+        && request.resource.data.keys().hasOnly([
+          'title', 'category', 'location', 'description', 'payMin', 'payMax',
+          'payType', 'tags', 'availability', 'portfolio', 'type',
+          'postedBy', 'status', 'publishedAt', 'privacySafe', 'featured', 'featuredUntil',
+          'views', 'createdAt', 'updatedAt'
+        ])
+        && validListingContent(request.resource.data);
+
+      allow update: if verifiedUser()
+        && isOwner()
+        && request.resource.data.updatedAt == request.time
+        && resource.data.status in ['published', 'paused', 'closed']
+        && request.resource.data.status == resource.data.status
+        && request.resource.data.privacySafe == true
+        && !request.resource.data.keys().hasAny(['phone'])
+        && validListingContent(request.resource.data)
+        && hasOnlyChanged([
+          'title',
+          'category',
+          'location',
+          'description',
+          'payMin',
+          'payMax',
+          'payType',
+          'tags',
+          'availability',
+          'portfolio',
+          'phone',
+          'savedBy',
+          'privacySafe',
+          'updatedAt'
+        ]);
+
+      allow update: if verifiedUser()
+        && isOwner()
+        && request.resource.data.updatedAt == request.time
+        && resource.data.status == 'published'
+        && request.resource.data.status in ['paused', 'closed']
+        && hasOnlyChanged(['status', 'updatedAt']);
+
+      allow update: if verifiedUser()
+        && isOwner()
+        && request.resource.data.updatedAt == request.time
+        && resource.data.status == 'paused'
+        && request.resource.data.status in ['published', 'closed']
+        && hasOnlyChanged(['status', 'updatedAt']);
+
+      allow update: if verifiedUser()
+        && isOwner()
+        && request.resource.data.updatedAt == request.time
+        && resource.data.status == 'closed'
+        && request.resource.data.status == 'published'
+        && hasOnlyChanged(['status', 'updatedAt']);
+
+      allow update: if verifiedUser()
+        && isOwner()
+        && request.resource.data.updatedAt == request.time
+        && resource.data.status in ['published', 'paused', 'closed']
+        && request.resource.data.status == 'deleted'
+        && hasOnlyChanged(['status', 'updatedAt']);
+
+      allow update: if signedIn()
+        && resource.data.status == 'published'
+        && hasOnlyChanged(['views'])
+        && request.resource.data.views is number
+        && request.resource.data.views >= resource.data.views;
+
+      allow delete: if false;
+    }
+
+    match /skills/{skillId} {
+        allow read: if (resource != null && resource.data.status == 'published'
+          && resource.data.privacySafe == true)
+        || (signedIn() && resource != null && resource.data.postedBy.uid == request.auth.uid)
+        || isAdmin();
+
+      allow create: if verifiedUser()
+        && validPoster(request.resource.data.postedBy, request.auth.uid)
+        && request.resource.data.type == 'skill'
+        && request.resource.data.status == 'pending_review'
+        && request.resource.data.privacySafe == true
+        && request.resource.data.rejectionReason == ''
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.isVerified == false
+        && request.resource.data.verifiedUntil == null
+        && request.resource.data.verificationPlan == null
+        && request.resource.data.verificationPaymentId == null
+        && request.resource.data.featured == false
+        && request.resource.data.featuredUntil == null
+        && request.resource.data.views == 0
+        && request.resource.data.keys().hasOnly([
+          'title', 'category', 'location', 'description', 'payMin', 'payMax',
+          'payType', 'tags', 'availability', 'portfolio', 'type',
+          'postedBy', 'status', 'privacySafe', 'rejectionReason', 'isVerified', 'verifiedUntil',
+          'verificationPlan', 'verificationPaymentId', 'featured',
+          'featuredUntil', 'views', 'createdAt', 'updatedAt'
+        ])
+        && validListingContent(request.resource.data);
+
+      allow update: if verifiedUser()
+        && isOwner()
+        && request.resource.data.updatedAt == request.time
+        && resource.data.status in ['pending_review', 'rejected', 'published', 'paused', 'active']
+        && request.resource.data.status == 'pending_review'
+        && request.resource.data.privacySafe == true
+        && !request.resource.data.keys().hasAny(['phone'])
+        && validListingContent(request.resource.data)
+        && hasOnlyChanged([
+          'title',
+          'category',
+          'location',
+          'description',
+          'payMin',
+          'payMax',
+          'payType',
+          'tags',
+          'availability',
+          'portfolio',
+          'phone',
+          'savedBy',
+          'privacySafe',
+          'status',
+          'rejectionReason',
+          'updatedAt'
+        ]);
+
+      allow update: if isOwner()
+        && request.resource.data.updatedAt == request.time
+        && resource.data.status == 'published'
+        && request.resource.data.status == 'paused'
+        && hasOnlyChanged(['status', 'updatedAt']);
+
+      allow update: if isOwner()
+        && request.resource.data.updatedAt == request.time
+        && resource.data.status == 'paused'
+        && request.resource.data.status == 'pending_review'
+        && hasOnlyChanged(['status', 'updatedAt']);
+
+      allow update: if isOwner()
+        && request.resource.data.updatedAt == request.time
+        && resource.data.status in ['pending_review', 'rejected', 'published', 'paused', 'active']
+        && request.resource.data.status == 'deleted'
+        && hasOnlyChanged(['status', 'updatedAt']);
+
+      allow update: if signedIn()
+        && resource.data.status == 'published'
+        && hasOnlyChanged(['views'])
+        && request.resource.data.views is number
+        && request.resource.data.views >= resource.data.views;
+      allow delete: if false;
+    }
+
     match /payments/{paymentId} {
-      allow read: if request.auth != null
-        && (request.auth.uid == resource.data.userId || isAdmin());
+      allow read: if signedIn()
+        && resource.data.userId == request.auth.uid;
 
-      allow create: if request.auth != null
-        && request.auth.uid == request.resource.data.userId;
+      allow create, update, delete: if false;
+    }
 
-      allow update: if isAdmin();
+    match /chats/{chatId} {
+      allow read: if signedIn()
+        && (!exists(/databases/$(database)/documents/chats/$(chatId))
+          || request.auth.uid in resource.data.participants);
+
+      allow create: if verifiedUser()
+        && request.resource.data.participants is list
+        && request.resource.data.participants.size() == 2
+        && request.auth.uid in request.resource.data.participants
+        && request.resource.data.entityId is string
+        && request.resource.data.participantNames is map
+        && request.resource.data.participantPhotos is map
+        && request.resource.data.participantNames.keys().hasOnly(request.resource.data.participants)
+        && request.resource.data.participantNames.keys().hasAll(request.resource.data.participants)
+        && request.resource.data.participantPhotos.keys().hasOnly(request.resource.data.participants)
+        && request.resource.data.participantPhotos.keys().hasAll(request.resource.data.participants)
+        && request.resource.data.participantNames[request.auth.uid] == 'Gigspot member'
+        && request.resource.data.participantPhotos[request.auth.uid] == ''
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.lastMessageAt == request.time
+        && request.resource.data.keys().hasOnly([
+          'entityId', 'entityTitle', 'entityType', 'participants',
+          'participantNames', 'participantPhotos', 'lastMessage',
+          'lastMessageId', 'lastMessageAt', 'createdAt'
+        ])
+        && request.resource.data.lastMessage == ''
+        && request.resource.data.lastMessageId == null
+        && (
+          (request.resource.data.entityType == 'job'
+            && exists(/databases/$(database)/documents/jobs/$(request.resource.data.entityId))
+            && get(/databases/$(database)/documents/jobs/$(request.resource.data.entityId)).data.status == 'published'
+            && get(/databases/$(database)/documents/jobs/$(request.resource.data.entityId)).data.privacySafe == true
+            && get(/databases/$(database)/documents/jobs/$(request.resource.data.entityId)).data.postedBy.uid != request.auth.uid
+            && request.resource.data.entityTitle == get(/databases/$(database)/documents/jobs/$(request.resource.data.entityId)).data.title
+            && request.resource.data.participantNames[get(/databases/$(database)/documents/jobs/$(request.resource.data.entityId)).data.postedBy.uid] == get(/databases/$(database)/documents/jobs/$(request.resource.data.entityId)).data.postedBy.name
+            && request.resource.data.participantPhotos[get(/databases/$(database)/documents/jobs/$(request.resource.data.entityId)).data.postedBy.uid] == ''
+            && request.resource.data.participants.hasAll([
+              request.auth.uid,
+              get(/databases/$(database)/documents/jobs/$(request.resource.data.entityId)).data.postedBy.uid
+            ]))
+          ||
+          (request.resource.data.entityType == 'skill'
+            && exists(/databases/$(database)/documents/skills/$(request.resource.data.entityId))
+            && get(/databases/$(database)/documents/skills/$(request.resource.data.entityId)).data.status == 'published'
+            && get(/databases/$(database)/documents/skills/$(request.resource.data.entityId)).data.privacySafe == true
+            && get(/databases/$(database)/documents/skills/$(request.resource.data.entityId)).data.postedBy.uid != request.auth.uid
+            && request.resource.data.entityTitle == get(/databases/$(database)/documents/skills/$(request.resource.data.entityId)).data.title
+            && request.resource.data.participantNames[get(/databases/$(database)/documents/skills/$(request.resource.data.entityId)).data.postedBy.uid] == get(/databases/$(database)/documents/skills/$(request.resource.data.entityId)).data.postedBy.name
+            && request.resource.data.participantPhotos[get(/databases/$(database)/documents/skills/$(request.resource.data.entityId)).data.postedBy.uid] == ''
+            && request.resource.data.participants.hasAll([
+              request.auth.uid,
+              get(/databases/$(database)/documents/skills/$(request.resource.data.entityId)).data.postedBy.uid
+            ]))
+        );
+
+      allow update, delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if signedIn()
+          && request.auth.uid in get(
+            /databases/$(database)/documents/chats/$(chatId)
+          ).data.participants;
+
+        allow create: if verifiedUser()
+          && request.resource.data.senderUid == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() >= 1
+          && request.resource.data.text.size() <= 2000
+          && !request.resource.data.text.matches('^\\s*$')
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.keys().hasOnly(['senderUid', 'text', 'createdAt'])
+          && request.auth.uid in get(
+            /databases/$(database)/documents/chats/$(chatId)
+          ).data.participants;
+
+        allow update, delete: if false;
+      }
     }
   }
 }

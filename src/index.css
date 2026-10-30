@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=DM+Sans:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,76 +6,133 @@
 
 @layer base {
   :root {
-    --cream: #f6e9d0;
-    --cream2: #eedfc0;
-    --forest: #043222;
-    --forest2: #065c3a;
-    --gold: #c9a84c;
-    --text: #1a0f00;
-    --muted: #5a4a30;
+    --cream: #f8faf7;
+    --cream2: #edf3e9;
+    --forest: #073b2a;
+    --forest2: #11533c;
+    --gold: #b5ff47;
+    --text: #18261e;
+    --muted: #65746b;
+    --danger: #dc2626;
+    --success: #047857;
+    --gs-dark: #073b2a;
+    --gs-spark: #b5ff47;
+    --gs-white: #f8faf7;
+    --gs-surface: #ffffff;
+    --gs-border: #dfe7df;
+    --gs-text: #18261e;
+    --gs-muted: #65746b;
   }
-  * { box-sizing: border-box; }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
-    font-family: 'DM Sans', sans-serif;
-    background-color: var(--cream);
-    color: var(--text);
+    margin: 0;
+    min-width: 320px;
     min-height: 100vh;
+    background: var(--cream);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  :focus-visible {
+    outline: 3px solid #78b832;
+    outline-offset: 3px;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply font-medium text-sm px-5 py-2.5 rounded-full transition-all duration-150 cursor-pointer border-none;
+    @apply rounded-full border-none px-5 py-2.5 text-sm font-medium transition-all duration-150;
     background: var(--forest);
     color: var(--cream);
-    font-family: 'DM Sans', sans-serif;
   }
-  .btn-primary:hover { background: var(--forest2); }
+
+  .btn-primary:hover:not(:disabled) {
+    background: var(--forest2);
+  }
 
   .btn-gold {
-    @apply font-medium text-sm px-5 py-2.5 rounded-full transition-all duration-150 cursor-pointer border-none;
+    @apply rounded-full border-none px-5 py-2.5 text-sm font-medium transition-all duration-150;
     background: var(--gold);
     color: var(--forest);
-    font-family: 'DM Sans', sans-serif;
   }
-  .btn-gold:hover { filter: brightness(1.08); }
+
+  .btn-gold:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
 
   .btn-ghost {
-    @apply font-medium text-sm px-5 py-2.5 rounded-full transition-all duration-150 cursor-pointer bg-transparent;
-    border: 1px solid rgba(246,233,208,0.25);
+    @apply rounded-full bg-transparent px-5 py-2.5 text-sm font-medium transition-all duration-150;
+    border: 1px solid rgba(246, 233, 208, 0.28);
     color: var(--cream);
-    font-family: 'DM Sans', sans-serif;
   }
-  .btn-ghost:hover { border-color: rgba(246,233,208,0.5); }
+
+  .btn-ghost:hover:not(:disabled) {
+    border-color: rgba(246, 233, 208, 0.62);
+  }
 
   .btn-outline {
-    @apply font-medium text-sm px-5 py-2.5 rounded-full transition-all duration-150 cursor-pointer bg-transparent;
-    border: 1px solid rgba(4,50,34,0.2);
+    @apply rounded-full bg-transparent px-5 py-2.5 text-sm font-medium transition-all duration-150;
+    border: 1px solid rgba(4, 50, 34, 0.22);
     color: var(--forest);
-    font-family: 'DM Sans', sans-serif;
   }
-  .btn-outline:hover { border-color: var(--forest); }
+
+  .btn-outline:hover:not(:disabled) {
+    border-color: var(--forest);
+  }
 
   .input {
-    @apply w-full text-sm rounded-xl transition-all outline-none;
-    padding: 9px 12px;
-    border: 1px solid rgba(4,50,34,0.15);
+    @apply w-full rounded-xl text-sm outline-none transition-all;
+    padding: 10px 12px;
+    border: 1px solid rgba(4, 50, 34, 0.15);
     background: #fff;
     color: var(--text);
-    font-family: 'DM Sans', sans-serif;
   }
+
   .input:focus {
     border-color: var(--forest);
-    box-shadow: 0 0 0 3px rgba(4,50,34,0.07);
+    box-shadow: 0 0 0 3px rgba(4, 50, 34, 0.08);
   }
 
   .label {
     display: block;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    margin-bottom: 5px;
     color: var(--muted);
-    margin-bottom: 4px;
-    font-weight: 500;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

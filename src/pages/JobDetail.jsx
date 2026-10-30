@@ -1,7 +1,15 @@
-import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { getJob, toggleSaveJob, deleteJob, incrementViews, getOrCreateChat, createPaymentRequest, activateFeaturedPost, updatePaymentStatus } from '../firebase/db'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useSavedListings } from '../context/SavedListingsContext'
+import {
+  getJob,
+  getSkill,
+  getOrCreateChat,
+  incrementJobViews,
+  incrementSkillViews,
+} from '../firebase/db'
+import { JOB_STATUS, SKILL_STATUS } from '../shared/constants'
 
 const BADGE = {
   Tech: 'bg-emerald-50 text-emerald-800',
@@ -11,307 +19,567 @@ const BADGE = {
   Education: 'bg-blue-50 text-blue-800',
 }
 
-const PLANS = [
-  { days: 7,  price: 99,  label: '7 Days',  tag: 'Starter' },
-  { days: 15, price: 179, label: '15 Days', tag: '🔥 Popular' },
-  { days: 30, price: 299, label: '30 Days', tag: 'Best Value' },
-]
-
-// REPLACE THIS WITH YOUR REAL WHATSAPP NUMBER
-const GIGSNEST_WA = '9199060XXXXX'
+function safePortfolioUrl(value) {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' && !url.username && !url.password
+      ? url.href
+      : null
+  } catch {
+    return null
+  }
+}
 
 export default function JobDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { user, signInWithGoogle } = useAuth()
-  const [job, setJob] = useState(null)
+  const { user, signingIn } = useAuth()
+  const { savedIds, toggle } = useSavedListings()
+  const loadSequence = useRef(0)
+
+  const [listing, setListing] = useState(null)
+  const [listingType, setListingType] = useState('')
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
-  const [deleting, setDeleting] = useState(false)
   const [contacting, setContacting] = useState(false)
-  const [showFeatureModal, setShowFeatureModal] = useState(false)
-  const [selectedPlan, setSelectedPlan] = useState(PLANS[1])
-  const [featureLoading, setFeatureLoading] = useState(false)
 
-  useEffect(() => {
-    getJob(id).then(j => {
-      setJob(j)
+  async function loadListing(shouldCountView = false) {
+    const requestId = ++loadSequence.current
+    setLoading(true)
+    setError('')
+
+    // Jobs and skills share the same /job/:id URL, so we don't know
+    // which collection this id belongs to. Each lookup is tried in its
+    // own try/catch: Firestore's security rules throw a permission
+    // error (not a clean "not found") when a document doesn't exist in
+    // a collection, so a single shared try/catch here would let a
+    // failed job lookup kill the skill lookup that should follow it.
+    let lookupError = null
+    let jobData = null
+    let skillData = null
+
+    try {
+      jobData = await getJob(id)
+    } catch (err) {
+      lookupError = err
+      jobData = null
+    }
+
+    if (requestId !== loadSequence.current) return
+
+    if (jobData) {
+      setListing(jobData)
+      setListingType('job')
+
+      if (
+        shouldCountView &&
+        user &&
+        user.uid !== jobData.postedBy?.uid &&
+        jobData.status === JOB_STATUS.PUBLISHED
+      ) {
+        incrementJobViews(id).catch(() => {})
+      }
+
       setLoading(false)
-      if (j && user && user.uid !== j.postedBy?.uid) incrementViews(id).catch(() => {})
-    })
-  }, [id, user])
+      return
+    }
 
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--cream)' }}>
-      <div className="w-8 h-8 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--forest)', borderTopColor: 'transparent' }} />
-    </div>
-  )
+    try {
+      skillData = await getSkill(id)
+    } catch (err) {
+      lookupError = err
+      skillData = null
+    }
 
-  if (!job) return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ background: 'var(--cream)' }}>
-      <p className="text-4xl">😕</p>
-      <p className="font-bold text-lg" style={{ color: 'var(--forest)' }}>Job not found</p>
-      <button onClick={() => navigate('/')} className="btn-primary">← Back to jobs</button>
-    </div>
-  )
+    if (requestId !== loadSequence.current) return
 
-  const now = new Date()
-  const isOwner = user?.uid === job.postedBy?.uid
-  const isSkill = job.type === 'skill'
-  const isSaved = user && Array.isArray(job.savedBy) && job.savedBy.includes(user.uid)
-  const isFeatured = job.featured && job.featuredUntil?.toDate?.() > now
-  const featuredUntilStr = job.featuredUntil?.toDate?.()?.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+    if (skillData) {
+      setListing(skillData)
+      setListingType('skill')
 
-  async function handleSave() {
-    if (!user) return
-    setSaving(true)
-    try { await toggleSaveJob(job.id, user.uid, isSaved); setJob(await getJob(id)) }
-    finally { setSaving(false) }
+      if (
+        shouldCountView &&
+        user &&
+        user.uid !== skillData.postedBy?.uid &&
+        skillData.status === SKILL_STATUS.PUBLISHED
+      ) {
+        incrementSkillViews(id).catch(() => {})
+      }
+
+      setLoading(false)
+      return
+    }
+
+    setListing(null)
+    setListingType('')
+    if (lookupError) {
+      console.error('Listing access error:', lookupError)
+      setError(lookupError.code === 'permission-denied'
+        ? 'This listing is not public or you do not have permission to view it.'
+        : 'Could not load this listing. Check your connection and try again.')
+    }
+    setLoading(false)
   }
 
-  async function handleDelete() {
-    if (!window.confirm('Delete this post?')) return
-    setDeleting(true)
-    try { await deleteJob(id); navigate('/my-jobs') }
-    catch { setDeleting(false) }
+  useEffect(() => {
+    loadListing(true)
+    return () => { loadSequence.current += 1 }
+  }, [id, user?.uid])
+
+  if (loading) {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ background: 'var(--cream)' }}
+      >
+        <div
+          className="w-8 h-8 border-2 rounded-full animate-spin"
+          style={{
+            borderColor: 'var(--forest)',
+            borderTopColor: 'transparent',
+          }}
+        />
+      </div>
+    )
+  }
+
+  if (!listing) {
+    return (
+      <div
+        className="min-h-screen flex flex-col items-center justify-center gap-4 px-4"
+        style={{ background: 'var(--cream)' }}
+      >
+        <p className="text-5xl">😕</p>
+
+        <h1
+          className="font-black text-2xl"
+          style={{
+            fontFamily: '"Playfair Display", serif',
+            color: 'var(--forest)',
+          }}
+        >
+          Listing not found
+        </h1>
+
+        <button onClick={() => navigate('/')} className="btn-primary">
+          ← Back to home
+        </button>
+      </div>
+    )
+  }
+
+  const isSkill = listingType === 'skill'
+  const isOwner = user?.uid === listing.postedBy?.uid
+  const saved = Boolean(
+    user && savedIds.has(`${isSkill ? 'skills' : 'jobs'}_${listing.id}`)
+  )
+
+  const publicListing = listing.privacySafe === true && (isSkill
+    ? listing.status === SKILL_STATUS.PUBLISHED
+    : listing.status === JOB_STATUS.PUBLISHED)
+  const canEdit = isSkill
+    ? [SKILL_STATUS.PENDING_REVIEW, SKILL_STATUS.REJECTED, SKILL_STATUS.PUBLISHED, SKILL_STATUS.PAUSED, SKILL_STATUS.ACTIVE].includes(listing.status)
+    : [JOB_STATUS.PUBLISHED, JOB_STATUS.PAUSED, JOB_STATUS.CLOSED].includes(listing.status)
+
+  const initials =
+    listing.postedBy?.name
+      ?.split(' ')
+      .map(word => word[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || '?'
+
+  async function handleSave() {
+    if (!user) {
+      navigate(`/signin?returnTo=${encodeURIComponent(`/job/${id}`)}`)
+      return
+    }
+
+    setSaving(true)
+
+    try {
+      await toggle(isSkill ? 'skills' : 'jobs', listing.id)
+    } catch (error) {
+      console.error('Save listing error:', error)
+      setError('Unable to update saved listing.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleContact() {
-    if (!user) { signInWithGoogle(); return }
+    if (!user) {
+      navigate(`/signin?returnTo=${encodeURIComponent(`/job/${id}`)}`)
+      return
+    }
+
+    if (!user.emailVerified) {
+      navigate(`/verify-email?returnTo=${encodeURIComponent(`/job/${id}`)}`)
+      return
+    }
+
+    if (isOwner) return
+
     setContacting(true)
+
     try {
-      const chatDocId = await getOrCreateChat(
-        job.id, job.title,
-        { uid: user.uid, displayName: user.displayName, photoURL: user.photoURL },
-        { uid: job.postedBy.uid, displayName: job.postedBy.name, photoURL: job.postedBy.photo }
+      const chatId = await getOrCreateChat(
+        listing.id,
+        listing.title,
+        listingType,
+        {
+          uid: user.uid,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+        },
+        {
+          uid: listing.postedBy.uid,
+          displayName: listing.postedBy.name,
+          photoURL: listing.postedBy.photo,
+        }
       )
-      navigate(`/chat/${chatDocId}`)
-    } catch (err) {
-      console.error(err)
+
+      navigate(`/chat/${chatId}`)
+    } catch (error) {
+      console.error('Chat create error:', error)
+      setError('Unable to open chat. Please try again.')
+    } finally {
       setContacting(false)
     }
   }
 
-  async function handleFeatureRequest() {
-    if (!user) {
-      signInWithGoogle()
-      return
-    }
-    setFeatureLoading(true)
-    try {
-      await createPaymentRequest({
-        jobId: job.id,
-        jobTitle: job.title,
-        planDays: selectedPlan.days,
-        planPrice: selectedPlan.price,
-        userId: user.uid,
-        userName: user.displayName || 'User',
-      })
-    } catch (e) {
-      console.error('Payment request failed', e)
-    } finally {
-      setFeatureLoading(false)
-    }
-
-    const message = `Hi GigsNest! I want to feature my post "${job.title}" (ID: ${job.id}) for ${selectedPlan.days} days (₹${selectedPlan.price}). Please share payment details.`
-    const url = `https://wa.me/${GIGSNEST_WA}?text=${encodeURIComponent(message)}`
-    window.open(url, '_blank')
-    setShowFeatureModal(false)
-  }
-
-  const paymentWA = `https://wa.me/${GIGSNEST_WA}?text=${encodeURIComponent(`Hi GigsNest! I want to feature my post "${job.title}" (ID: ${job.id}) for ${selectedPlan.days} days (₹${selectedPlan.price}). Please share payment details.`)}`
-
   return (
-    <div className="min-h-screen py-10 px-4" style={{ background: 'var(--cream)' }}>
+    <div
+      className="min-h-screen py-10 px-4"
+      style={{ background: 'var(--cream)' }}
+    >
       <div className="max-w-2xl mx-auto">
-        <button onClick={() => navigate(-1)} className="text-sm mb-6 flex items-center gap-1 hover:opacity-70" style={{ color: 'var(--muted)' }}>
+        <button
+          onClick={() => navigate(-1)}
+          className="text-sm mb-6"
+          style={{ color: 'var(--muted)' }}
+        >
           ← Back
         </button>
 
-        <div className="rounded-2xl overflow-hidden shadow-sm"
-          style={{ background: '#fff', border: isFeatured ? '1.5px solid var(--gold)' : '1px solid rgba(4,50,34,0.08)' }}>
+        {error && (
+          <div
+            className="mb-5 rounded-xl px-4 py-3 text-sm"
+            style={{
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              color: '#dc2626',
+            }}
+          >
+            ⚠️ {error}
+          </div>
+        )}
 
-          {/* Featured banner */}
-          {isFeatured && (
-            <div className="flex items-center gap-2 px-5 py-2 text-xs font-bold uppercase tracking-widest" style={{ background: 'var(--gold)', color: 'var(--forest)' }}>
-              ⭐ Featured · Active until {featuredUntilStr}
-            </div>
-          )}
+        {!publicListing && isOwner && (
+          <div
+            className="mb-5 rounded-xl px-4 py-3 text-sm"
+            style={{
+              background: '#fff7ed',
+              border: '1px solid #fed7aa',
+              color: '#c2410c',
+            }}
+          >
+            {listing.privacySafe !== true
+              ? 'This legacy listing is private until edited to remove old public contact fields.'
+              : listing.status === SKILL_STATUS.PENDING_REVIEW
+              ? 'Your service is waiting for review and is not public yet.'
+              : listing.status === SKILL_STATUS.REJECTED
+                ? `Changes requested: ${listing.rejectionReason || 'Please edit and resubmit this service.'}`
+                : listing.status === JOB_STATUS.PENDING_PAYMENT
+                  ? 'This older job uses a retired publication flow and remains private. Its payment data has not been changed.'
+                  : 'This listing is not currently public.'}
+          </div>
+        )}
 
-          {/* Header */}
-          <div className="p-6" style={{ background: 'var(--forest)' }}>
-            <div className="flex items-start justify-between gap-3">
+        <article
+          className="rounded-2xl overflow-hidden shadow-sm"
+          style={{
+            background: '#fff',
+            border: '1px solid rgba(4,50,34,0.08)',
+          }}
+        >
+          <header className="p-6" style={{ background: 'var(--forest)' }}>
+            <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-3 flex-wrap">
-                  <span className={`text-[10px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full ${BADGE[job.category] || ''}`}>
-                    {job.category}
+                  <span
+                    className={`text-[10px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full ${
+                      BADGE[listing.category] || ''
+                    }`}
+                  >
+                    {listing.category}
                   </span>
-                  <span className="text-[10px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full"
-                    style={{ background: isSkill ? 'rgba(201,168,76,0.3)' : 'rgba(246,233,208,0.15)', color: isSkill ? 'var(--gold)' : 'rgba(246,233,208,0.8)' }}>
-                    {isSkill ? '🙋 Available for hire' : '🧑‍💼 Looking to hire'}
+
+                  <span
+                    className="text-[10px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full"
+                    style={{
+                      background: isSkill
+                        ? 'rgba(201,168,76,0.3)'
+                        : 'rgba(246,233,208,0.15)',
+                      color: isSkill
+                        ? 'var(--gold)'
+                        : 'rgba(246,233,208,0.8)',
+                    }}
+                  >
+                    {isSkill
+                      ? '🙋 Available for hire'
+                      : '🧑‍💼 Looking to hire'}
                   </span>
+
                 </div>
-                <h1 className="font-black text-2xl leading-tight" style={{ fontFamily: '"Playfair Display",serif', color: 'var(--cream)' }}>
-                  {job.title}
+
+                <h1
+                  className="font-black text-2xl leading-tight"
+                  style={{
+                    fontFamily: '"Playfair Display", serif',
+                    color: 'var(--cream)',
+                  }}
+                >
+                  {listing.title}
                 </h1>
-                <div className="flex items-center gap-3 mt-2">
-                  <p className="text-xs" style={{ color: 'rgba(246,233,208,0.5)' }}>📍 {job.location}</p>
-                  {job.views > 0 && <p className="text-xs" style={{ color: 'rgba(246,233,208,0.35)' }}>👁 {job.views} views</p>}
+
+                <div className="flex items-center gap-3 mt-3">
+                  <p
+                    className="text-xs"
+                    style={{ color: 'rgba(246,233,208,0.58)' }}
+                  >
+                    📍 {listing.location}
+                  </p>
+
+                  {Number(listing.views) > 0 && (
+                    <p
+                      className="text-xs"
+                      style={{ color: 'rgba(246,233,208,0.4)' }}
+                    >
+                      👁 {listing.views} views
+                    </p>
+                  )}
                 </div>
               </div>
+
               {user && !isOwner && (
-                <button onClick={handleSave} disabled={saving} className="p-2 rounded-lg transition-all flex-shrink-0"
-                  style={{ border: `1px solid ${isSaved ? 'var(--gold)' : 'rgba(246,233,208,0.2)'}`, background: isSaved ? 'rgba(201,168,76,0.2)' : 'transparent', color: isSaved ? 'var(--gold)' : 'rgba(246,233,208,0.5)' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill={isSaved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
-                    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="p-2 rounded-lg disabled:opacity-60"
+                  style={{
+                    border: `1px solid ${
+                      saved
+                        ? 'var(--gold)'
+                        : 'rgba(246,233,208,0.22)'
+                    }`,
+                    color: saved
+                      ? 'var(--gold)'
+                      : 'rgba(246,233,208,0.58)',
+                  }}
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill={saved ? 'currentColor' : 'none'}
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
                   </svg>
                 </button>
               )}
             </div>
-          </div>
+          </header>
 
           <div className="p-6">
-            {/* Poster */}
-            <div className="flex items-center gap-3 pb-5 mb-5" style={{ borderBottom: '1px solid rgba(4,50,34,0.08)' }}>
-              {job.postedBy?.photo
-                ? <img src={job.postedBy.photo} alt="" className="w-10 h-10 rounded-full object-cover" />
-                : <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold" style={{ background: 'var(--forest)', color: 'var(--cream)' }}>
-                    {job.postedBy?.name?.[0] || '?'}
-                  </div>
-              }
+            <div
+              className="flex items-center gap-3 pb-5 mb-5"
+              style={{ borderBottom: '1px solid rgba(4,50,34,0.08)' }}
+            >
+              {listing.postedBy?.photo ? (
+                <img
+                  src={listing.postedBy.photo}
+                  alt=""
+                  className="w-11 h-11 rounded-full object-cover"
+                />
+              ) : (
+                <div
+                  className="w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold"
+                  style={{
+                    background: 'var(--forest)',
+                    color: 'var(--cream)',
+                  }}
+                >
+                  {initials}
+                </div>
+              )}
+
               <div>
-                <p className="text-sm font-medium" style={{ color: 'var(--forest)' }}>{job.postedBy?.name}</p>
-                <p className="text-xs" style={{ color: 'var(--muted)' }}>{isSkill ? 'Freelancer' : 'Client'}</p>
+                <p
+                  className="text-sm font-medium"
+                  style={{ color: 'var(--forest)' }}
+                >
+                  {listing.postedBy?.name || 'Gigspot member'}
+                </p>
+
+                <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                  {isSkill ? 'Service provider' : 'Hiring client'}
+                </p>
               </div>
             </div>
 
-            {/* Description */}
-            <div className="mb-5">
-              <p className="label mb-2">{isSkill ? 'About this skill' : 'About this job'}</p>
-              <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: '#3a2a10' }}>{job.description}</p>
-            </div>
+            <section className="mb-5">
+              <p className="label mb-2">
+                {isSkill ? 'About this skill' : 'About this job'}
+              </p>
 
-            {/* Tags */}
-            {job.tags?.length > 0 && (
-              <div className="mb-5">
-                <p className="label mb-2">{isSkill ? 'Skills offered' : 'Skills required'}</p>
+              <p
+                className="text-sm leading-relaxed whitespace-pre-line"
+                style={{ color: '#3a2a10' }}
+              >
+                {listing.description}
+              </p>
+            </section>
+
+            {listing.tags?.length > 0 && (
+              <section className="mb-5">
+                <p className="label mb-2">
+                  {isSkill ? 'Skills offered' : 'Skills required'}
+                </p>
+
                 <div className="flex flex-wrap gap-2">
-                  {job.tags.map(t => (
-                    <span key={t} className="text-xs px-3 py-1 rounded-full" style={{ background: 'var(--cream)', color: 'var(--muted)', border: '1px solid rgba(4,50,34,0.1)' }}>
-                      {t}
+                  {listing.tags.map(tag => (
+                    <span
+                      key={tag}
+                      className="text-xs px-3 py-1 rounded-full"
+                      style={{
+                        background: 'var(--cream)',
+                        color: 'var(--muted)',
+                        border: '1px solid rgba(4,50,34,0.1)',
+                      }}
+                    >
+                      {tag}
                     </span>
                   ))}
                 </div>
-              </div>
+              </section>
             )}
 
-            {/* Pay */}
-            <div className="rounded-xl p-4 mb-6" style={{ background: 'var(--forest)' }}>
-              <p className="label mb-1" style={{ color: 'rgba(246,233,208,0.4)' }}>{isSkill ? 'Rate' : 'Budget'}</p>
-              <p className="font-black text-2xl" style={{ fontFamily: '"Playfair Display",serif', color: 'var(--cream)' }}>
-                ₹{Number(job.payMin).toLocaleString()} – ₹{Number(job.payMax).toLocaleString()}
-                <span className="text-sm font-normal ml-1.5" style={{ color: 'rgba(246,233,208,0.5)', fontFamily: '"DM Sans",sans-serif' }}>{job.payType}</span>
-              </p>
-            </div>
+            {isSkill && (
+              <section className="mb-5">
+                <p className="label mb-2">Work arrangement</p>
+                <p className="text-sm capitalize" style={{ color: 'var(--text)' }}>
+                  {listing.availability || 'Not specified'}
+                </p>
+              </section>
+            )}
 
-            {/* Actions */}
+            {isSkill && listing.portfolio?.length > 0 && (
+              <section className="mb-5">
+                <p className="label mb-2">Portfolio links</p>
+                <ul className="space-y-2">
+                  {listing.portfolio.slice(0, 5).map((item, index) => {
+                    const href = safePortfolioUrl(item.url)
+                    return href ? (
+                      <li key={`${href}-${index}`}>
+                        <a href={href} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: 'var(--forest)' }}>
+                          {item.label || 'View work'}
+                        </a>
+                      </li>
+                    ) : null
+                  })}
+                </ul>
+                <p className="mt-2 text-xs" style={{ color: 'var(--muted)' }}>
+                  External links are provided by the listing owner and do not verify ownership or credentials.
+                </p>
+              </section>
+            )}
+
+            <section
+              className="rounded-xl p-4 mb-6"
+              style={{ background: 'var(--forest)' }}
+            >
+              <p
+                className="label mb-1"
+                style={{ color: 'rgba(246,233,208,0.42)' }}
+              >
+                {isSkill ? 'Rate' : 'Budget'}
+              </p>
+
+              <p
+                className="font-black text-2xl"
+                style={{
+                  fontFamily: '"Playfair Display", serif',
+                  color: 'var(--cream)',
+                }}
+              >
+                ₹{Number(listing.payMin).toLocaleString()} – ₹
+                {Number(listing.payMax).toLocaleString()}
+
+                <span
+                  className="text-sm font-normal ml-1.5"
+                  style={{
+                    color: 'rgba(246,233,208,0.52)',
+                    fontFamily: '"DM Sans", sans-serif',
+                  }}
+                >
+                  {listing.payType}
+                </span>
+              </p>
+            </section>
+
             {isOwner ? (
               <div className="space-y-3">
-                {!isFeatured ? (
-                  <button onClick={() => setShowFeatureModal(true)}
-                    className="w-full flex items-center justify-between px-5 py-4 rounded-xl transition-all hover:shadow-sm"
-                    style={{ background: 'rgba(201,168,76,0.08)', border: '1.5px dashed rgba(201,168,76,0.6)' }}>
-                    <div className="text-left">
-                      <p className="font-bold text-sm" style={{ color: 'var(--forest)', fontFamily: '"Playfair Display",serif' }}>⭐ Feature this post</p>
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>Get 5× more views — appear at top of feed</p>
-                    </div>
-                    <span className="text-xs font-bold px-3 py-1.5 rounded-full ml-3" style={{ background: 'var(--gold)', color: 'var(--forest)' }}>From ₹99</span>
+                {canEdit && (
+                  <button
+                    onClick={() => navigate(isSkill ? `/edit-skill/${listing.id}` : `/edit/${listing.id}`)}
+                    className="btn-outline w-full py-3"
+                  >
+                    Edit listing
                   </button>
-                ) : (
-                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm" style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.3)', color: 'var(--forest)' }}>
-                    ⭐ Featured until {featuredUntilStr}
-                  </div>
                 )}
-                <div className="flex gap-3">
-                  <button onClick={() => navigate(`/edit/${id}`)} className="btn-outline flex-1 py-3">✏️ Edit</button>
-                  <button onClick={handleDelete} disabled={deleting} className="flex-1 py-3 rounded-full text-sm font-medium transition-all disabled:opacity-50"
-                    style={{ border: '1px solid #fca5a5', color: '#dc2626' }}>
-                    {deleting ? 'Deleting...' : '🗑️ Delete'}
-                  </button>
-                </div>
               </div>
             ) : (
-              <div className="space-y-3">
-                {/* Main contact button */}
-                <button onClick={handleContact} disabled={contacting}
-                  className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-bold text-base transition-all disabled:opacity-60"
-                  style={{ background: 'var(--forest)', color: 'var(--cream)', fontFamily: '"Playfair Display",serif' }}>
-                  {contacting ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Opening chat...
-                    </>
-                  ) : (
-                    <>
-                      💬 {isSkill ? `Message ${job.postedBy?.name?.split(' ')[0]}` : `Contact ${job.postedBy?.name?.split(' ')[0]}`}
-                    </>
-                  )}
+              <div>
+                <button
+                  onClick={handleContact}
+                  disabled={contacting || signingIn}
+                  className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-bold text-base disabled:opacity-60"
+                  style={{
+                    background: 'var(--forest)',
+                    color: 'var(--cream)',
+                    fontFamily: '"Playfair Display", serif',
+                  }}
+                >
+                  {contacting || signingIn
+                    ? 'Opening chat...'
+                    : `💬 ${
+                        isSkill
+                          ? `Message ${
+                              listing.postedBy?.name?.split(' ')[0] || 'Professional'
+                            }`
+                          : `Contact ${
+                              listing.postedBy?.name?.split(' ')[0] || 'Client'
+                            }`
+                      }`}
                 </button>
+
                 {!user && (
-                  <p className="text-xs text-center" style={{ color: 'var(--muted)' }}>
-                    Sign in to send a message
+                  <p
+                    className="text-xs text-center mt-3"
+                    style={{ color: 'var(--muted)' }}
+                  >
+                    Sign in and verify your email to message or save this listing.
                   </p>
                 )}
               </div>
             )}
           </div>
-        </div>
+        </article>
       </div>
-
-      {/* Feature Modal */}
-      {showFeatureModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
-          style={{ background: 'rgba(4,50,34,0.6)' }} onClick={() => setShowFeatureModal(false)}>
-          <div className="rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl" style={{ background: 'var(--cream)' }} onClick={e => e.stopPropagation()}>
-            <div className="p-5 text-center" style={{ background: 'var(--forest)' }}>
-              <p className="text-3xl mb-2">⭐</p>
-              <h2 className="font-black text-xl" style={{ fontFamily: '"Playfair Display",serif', color: 'var(--cream)' }}>Feature this Post</h2>
-              <p className="text-xs mt-1" style={{ color: 'rgba(246,233,208,0.5)' }}>Appear at top of feed · Get 5× more views</p>
-            </div>
-            <div className="p-5">
-              <p className="label mb-3">Choose a plan</p>
-              <div className="space-y-2 mb-4">
-                {PLANS.map(plan => (
-                  <button key={plan.days} onClick={() => setSelectedPlan(plan)}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all text-left"
-                    style={{ border: selectedPlan.days === plan.days ? '2px solid var(--forest)' : '1px solid rgba(4,50,34,0.15)', background: selectedPlan.days === plan.days ? 'rgba(4,50,34,0.06)' : '#fff' }}>
-                    <div>
-                      <p className="text-sm font-medium" style={{ color: 'var(--forest)' }}>{plan.label}</p>
-                      <p className="text-xs" style={{ color: 'var(--muted)' }}>{plan.tag}</p>
-                    </div>
-                    <p className="font-black text-lg" style={{ fontFamily: '"Playfair Display",serif', color: 'var(--forest)' }}>₹{plan.price}</p>
-                  </button>
-                ))}
-              </div>
-              <div className="rounded-xl p-3 mb-4 text-xs space-y-1" style={{ background: 'rgba(4,50,34,0.05)', color: 'var(--muted)' }}>
-                <p className="font-medium" style={{ color: 'var(--forest)' }}>How it works:</p>
-                <p>1. Click below → WhatsApp opens</p>
-                <p>2. We reply with UPI payment details</p>
-                <p>3. After payment → featured within 1 hour ✅</p>
-              </div>
-              <button
-                onClick={handleFeatureRequest}
-                disabled={featureLoading}
-                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-white text-sm font-bold mb-2 disabled:opacity-50"
-                style={{ background: '#25D366', display: 'flex' }}
-              >
-                💳 Pay ₹{selectedPlan.price} via WhatsApp
-              </button>
-              <button onClick={() => setShowFeatureModal(false)} className="w-full text-xs py-2 hover:opacity-70" style={{ color: 'var(--muted)' }}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
